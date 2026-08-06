@@ -89,3 +89,55 @@ message Kick {
   KickReason reason = 1;
   string detail = 2;
 }
+
+// S→C 回合/炸弹/计分状态（阶段切换与事件时广播）。
+message RoundState {
+  enum Phase {
+    PHASE_IDLE = 0;
+    PHASE_FREEZE = 1;
+    PHASE_ACTIVE = 2;
+    PHASE_ROUND_END = 3;
+    PHASE_MATCH_END = 4;
+  }
+  enum BombPhase {
+    BOMB_NONE = 0;
+    BOMB_PLANTING = 1;
+    BOMB_PLANTED = 2;
+    BOMB_DEFUSING = 3;
+    BOMB_EXPLODED = 4;
+    BOMB_DEFUSED = 5;
+  }
+  Phase phase = 1;
+  uint32 round = 2;
+  uint32 time_ms = 3;
+  uint32 attack_score = 4;
+  uint32 defend_score = 5;
+  BombPhase bomb = 6;
+  uint32 bomb_site = 7;
+  Team winner = 8;
+}
+
+// S→C 击杀播报。
+message KillFeed {
+  uint32 attacker_id = 1; // 0 = 世界/坠落
+  uint32 victim_id = 2;
+  uint32 weapon_id = 3;
+  bool headshot = 4;
+  bool wallbang = 5;
+  uint32 distance_cm = 6;
+}
+
+// S→C 对局结束。
+message MatchEnd {
+  Team winner = 1;
+  uint32 attack_score = 2;
+  uint32 defend_score = 3;
+  uint32 reason = 4;
+}
+
+// S→C 伤害摘要（仅发给攻击方，UI-003 伤害反馈）。
+message Damage {
+  uint32 victim_id = 1;
+  uint32 damage = 2;
+  uint32 victim_health = 3;
+}

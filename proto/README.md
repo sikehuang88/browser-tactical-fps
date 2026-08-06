@@ -54,6 +54,10 @@
 | 0x05 | Ping | C→S | ✅ |
 | 0x06 | Pong | S→C | ✅ |
 | 0x07 | Kick | S→C | ✅ |
+| 0x08 | RoundState | S→C | ✅（阶段切换/事件广播） |
+| 0x09 | KillFeed | S→C | ✅ |
+| 0x0A | MatchEnd | S→C | ✅ |
+| 0x0B | Damage | S→C | ✅（仅发给攻击方，伤害摘要） |
 
 ### 负载定义
 
@@ -91,6 +95,7 @@ per entity:
   i16 x, i16 y, i16 z      # 厘米
   i16 yaw, i16 pitch       # 厘度
   i16 health
+  u8  team                  # 1=攻击方 2=防守方
 ```
 
 **Ping (0x05)** / **Pong (0x06)**
@@ -102,6 +107,42 @@ Pong 追加 `u32 serverRecvAtMs`。
 **Kick (0x07)**
 ```
 u8 reason: 0=版本不匹配 1=服务器已满 2=协议错误 3=封禁
+```
+
+**RoundState (0x08)**（阶段切换/炸弹/计分事件时广播，客户端本地倒计时）
+```
+u8  phase       # 0=idle 1=freeze 2=active 3=round_end 4=match_end
+u8  round       # 1 起
+u16 time_ms     # 剩余毫秒
+u8  attack_score
+u8  defend_score
+u8  bomb        # 0=none 1=planting 2=planted 3=defusing 4=exploded 5=defused
+u8  bomb_site   # 0=A 1=B
+u8  winner      # 0=none 1=attack 2=defend
+```
+
+**KillFeed (0x09)**
+```
+u32 attacker_id   # 0 = 世界/坠落
+u32 victim_id
+u8  weapon_id
+u8  flags         # bit0 爆头 bit1 穿墙
+u16 distance_cm
+```
+
+**MatchEnd (0x0A)**
+```
+u8 winner     # 1=attack 2=defend
+u8 attack_score
+u8 defend_score
+u8 reason     # 0=先达回合数 1=放弃
+```
+
+**Damage (0x0B)**（仅发给攻击方）
+```
+u32 victim_id
+u16 damage
+u16 victim_health
 ```
 
 ### 带宽预估

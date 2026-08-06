@@ -13,12 +13,17 @@ export class EntityView {
 
     for (const e of entities) {
       if (e.id === localId) continue
+      if (e.health <= 0) continue // 死亡实体不渲染（计分板仍保留）
       seen.add(e.id)
       let group = this.meshes.get(e.id)
       if (!group) {
-        group = createPlayerMesh(e.id)
+        group = createPlayerMesh(e.team)
         this.scene.add(group)
         this.meshes.set(e.id, group)
+      } else if (group.userData.team !== e.team) {
+        // 换边后重着色
+        recolorGroup(group, e.team)
+        group.userData.team = e.team
       }
       const h = e.crouching ? 1.35 : 1.8
       group.scale.set(1, h / 1.8, 1)
@@ -26,7 +31,7 @@ export class EntityView {
       group.rotation.y = THREE.MathUtils.degToRad(e.yaw)
     }
 
-    // 移除已消失的实体
+    // 移除已消失或已死亡的实体
     for (const [id, group] of this.meshes) {
       if (seen.has(id)) continue
       this.disposeGroup(group)
@@ -55,9 +60,20 @@ export class EntityView {
   }
 }
 
-function createPlayerMesh(id: number): THREE.Group {
+const TEAM_COLORS = [
+  0x8b949e, // 未分配
+  0xff9a3c, // 攻击方（橙）
+  0x4a8fff, // 防守方（蓝）
+]
+
+function teamColor(team: number): THREE.Color {
+  const c = TEAM_COLORS[team] ?? TEAM_COLORS[0]
+  return new THREE.Color(c)
+}
+
+function createPlayerMesh(team: number): THREE.Group {
   const g = new THREE.Group()
-  const color = new THREE.Color().setHSL(((id * 0.137) % 1), 0.6, 0.52)
+  const color = teamColor(team)
   const bodyMat = new THREE.MeshStandardMaterial({ color, roughness: 0.8 })
   const headMat = new THREE.MeshStandardMaterial({
     color: color.clone().offsetHSL(0, 0, 0.12),
@@ -69,5 +85,15 @@ function createPlayerMesh(id: number): THREE.Group {
   const head = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.3, 0.3), headMat)
   head.position.y = 1.52
   g.add(body, head)
+  g.userData.team = team
   return g
+}
+
+function recolorGroup(g: THREE.Group, team: number): void {
+  const color = teamColor(team)
+  g.traverse((obj) => {
+    if (obj instanceof THREE.Mesh && obj.material instanceof THREE.MeshStandardMaterial) {
+      obj.material.color.copy(color)
+    }
+  })
 }

@@ -14,6 +14,10 @@ export const MSG = {
   PING: 0x05,
   PONG: 0x06,
   KICK: 0x07,
+  ROUND_STATE: 0x08,
+  KILL_FEED: 0x09,
+  MATCH_END: 0x0a,
+  DAMAGE: 0x0b,
 } as const
 
 const FLAG_RELIABLE = 1 << 0
@@ -116,6 +120,7 @@ export function decodeSnapshot(payload: Uint8Array): { tick: number; entities: E
     const yaw = dv.getInt16(off); off += 2
     const pitch = dv.getInt16(off); off += 2
     const health = dv.getInt16(off); off += 2
+    const team = dv.getUint8(off); off += 1
     entities.push({
       id,
       position: { x: x / 100, y: y / 100, z: z / 100 },
@@ -125,6 +130,7 @@ export function decodeSnapshot(payload: Uint8Array): { tick: number; entities: E
       crouching: (flags & 2) !== 0,
       health,
       weaponId: 0,
+      team,
     })
   }
   return { tick, entities }
@@ -147,4 +153,82 @@ export function decodeKick(payload: Uint8Array): { reason: number; detail: strin
   const reason = payload[0] ?? 0
   const detail = new TextDecoder().decode(payload.slice(1))
   return { reason, detail }
+}
+
+// ---------- RoundState / KillFeed / MatchEnd / Damage ----------
+
+export interface RoundStateMsg {
+  phase: number // 0=idle 1=freeze 2=active 3=round_end 4=match_end
+  round: number
+  timeMs: number
+  attackScore: number
+  defendScore: number
+  bomb: number // 0=none 1=planting 2=planted 3=defusing 4=exploded 5=defused
+  bombSite: number // 0=A 1=B
+  winner: number // 0=none 1=attack 2=defend
+}
+
+export function decodeRoundState(payload: Uint8Array): RoundStateMsg {
+  const dv = new DataView(payload.buffer, payload.byteOffset, payload.byteLength)
+  return {
+    phase: dv.getUint8(0),
+    round: dv.getUint8(1),
+    timeMs: dv.getUint16(2),
+    attackScore: dv.getUint8(4),
+    defendScore: dv.getUint8(5),
+    bomb: dv.getUint8(6),
+    bombSite: dv.getUint8(7),
+    winner: dv.getUint8(8),
+  }
+}
+
+export interface KillFeedMsg {
+  attackerId: number
+  victimId: number
+  weaponId: number
+  flags: number // bit0 爆头 bit1 穿墙
+  distanceCm: number
+}
+
+export function decodeKillFeed(payload: Uint8Array): KillFeedMsg {
+  const dv = new DataView(payload.buffer, payload.byteOffset, payload.byteLength)
+  return {
+    attackerId: dv.getUint32(0),
+    victimId: dv.getUint32(4),
+    weaponId: dv.getUint8(8),
+    flags: dv.getUint8(9),
+    distanceCm: dv.getUint16(10),
+  }
+}
+
+export interface MatchEndMsg {
+  winner: number
+  attackScore: number
+  defendScore: number
+  reason: number
+}
+
+export function decodeMatchEnd(payload: Uint8Array): MatchEndMsg {
+  const dv = new DataView(payload.buffer, payload.byteOffset, payload.byteLength)
+  return {
+    winner: dv.getUint8(0),
+    attackScore: dv.getUint8(1),
+    defendScore: dv.getUint8(2),
+    reason: dv.getUint8(3),
+  }
+}
+
+export interface DamageMsg {
+  victimId: number
+  damage: number
+  victimHealth: number
+}
+
+export function decodeDamage(payload: Uint8Array): DamageMsg {
+  const dv = new DataView(payload.buffer, payload.byteOffset, payload.byteLength)
+  return {
+    victimId: dv.getUint32(0),
+    damage: dv.getUint16(4),
+    victimHealth: dv.getUint16(6),
+  }
 }

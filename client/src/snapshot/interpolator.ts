@@ -77,6 +77,7 @@ function lerpEntities(a: EntitySnapshot[], c: EntitySnapshot[], f: number): Enti
       crouching: end.crouching,
       health: end.health,
       weaponId: end.weaponId,
+      team: end.team,
     })
   }
   return out

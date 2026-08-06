@@ -9,6 +9,15 @@ pub struct Aabb {
 
 pub const GROUND_Y: f32 = 0.0;
 pub const SPAWN: [f32; 3] = [0.0, GROUND_Y, 8.0];
+/// 进攻方出生点。
+pub const SPAWN_ATTACK: [f32; 3] = [0.0, GROUND_Y, 8.0];
+/// 防守方出生点。
+pub const SPAWN_DEFEND: [f32; 3] = [0.0, GROUND_Y, -8.0];
+/// 爆破点（A / B），与客户端地图标记一致。
+pub const BOMB_SITES: [[f32; 3]; 2] = [[-14.0, 0.0, -14.0], [14.0, 0.0, 14.0]];
+/// 安装/拆除交互距离。
+pub const PLANT_DISTANCE: f32 = 2.0;
+pub const DEFUSE_DISTANCE: f32 = 2.0;
 
 pub const ARENA_BOUNDS: Aabb = Aabb {
     min: [-24.0, -1.0, -24.0],
@@ -42,6 +51,14 @@ impl Default for Collision {
 }
 
 impl Collision {
+    pub fn walls(&self) -> &[Aabb] {
+        &self.walls
+    }
+
+    pub fn bounds(&self) -> &Aabb {
+        &self.bounds
+    }
+
     /// 逐轴移动 + AABB 碰撞解析，返回是否落地。pos[1] 为脚底高度。
     pub fn step(
         &self,

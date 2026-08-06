@@ -20,5 +20,9 @@ message Envelope {
     Ping ping = 14;
     Pong pong = 15;
     Kick kick = 16;
+    RoundState round_state = 17;
+    KillFeed kill_feed = 18;
+    MatchEnd match_end = 19;
+    Damage damage = 20;
   }
 }

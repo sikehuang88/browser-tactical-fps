@@ -12,12 +12,13 @@ use tokio_tungstenite::tungstenite::{Error as WsError, Message};
 
 use crate::config::Config;
 use crate::protocol::{
-    decode_hello, decode_input_frame, decode_ping, encode_envelope, encode_kick, encode_pong,
-    encode_snapshot, encode_welcome, parse_envelope, InputFrame, KICK_SERVER_FULL,
-    KICK_VERSION_MISMATCH, MSG_HELLO, MSG_INPUT_FRAME, MSG_KICK, MSG_PING, MSG_PONG,
-    MSG_SNAPSHOT, MSG_WELCOME,
+    decode_hello, decode_input_frame, decode_ping, encode_damage, encode_envelope, encode_kick,
+    encode_kill_feed, encode_match_end, encode_pong, encode_round_state, encode_snapshot,
+    encode_welcome, parse_envelope, InputFrame, KICK_SERVER_FULL, KICK_VERSION_MISMATCH,
+    MSG_DAMAGE, MSG_HELLO, MSG_INPUT_FRAME, MSG_KICK, MSG_KILL_FEED, MSG_MATCH_END, MSG_PING,
+    MSG_PONG, MSG_ROUND_STATE, MSG_SNAPSHOT, MSG_WELCOME,
 };
-use crate::sim::World;
+use crate::sim::{World, WorldEvent};
 use crate::telemetry::TickStats;
 
 /// 连接 → 模拟循环 的消息。
@@ -40,15 +41,21 @@ pub enum InboundMsg {
     },
 }
 
-/// 模拟循环 → 连接 的消息（预编码，快照走不可靠通道语义，channel 满则丢弃）。
+/// 模拟循环 → 连接 的消息（预编码，快照走不可靠通道语义，channel 满则丢弃；
+/// 回合/击杀/结算等关键事件可靠送达）。
+#[derive(Clone)]
 pub enum OutboundMsg {
     Snapshot(Vec<u8>),
     Pong(Vec<u8>),
+    RoundState(Vec<u8>),
+    KillFeed(Vec<u8>),
+    MatchEnd(Vec<u8>),
+    Damage(Vec<u8>),
 }
 
 /// 权威模拟循环：固定 tick 频率，批处理输入、步进世界、广播快照。
 pub async fn run_tick_loop(cfg: Config, mut rx: mpsc::Receiver<InboundMsg>) {
-    let mut world = World::new();
+    let mut world = World::new(cfg.tick_rate);
     let mut players: HashMap<u32, mpsc::Sender<OutboundMsg>> = HashMap::new();
     let mut next_id: u32 = 0;
     let mut tick: u32 = 0;
@@ -69,8 +76,45 @@ pub async fn run_tick_loop(cfg: Config, mut rx: mpsc::Receiver<InboundMsg>) {
         }
 
         let start = Instant::now();
-        world.step(dt);
+        let events = world.step(dt);
         stats.record(start.elapsed());
+
+        // 广播关键事件（可靠通道）
+        for ev in events {
+            match ev {
+                WorldEvent::KillFeed(k) => {
+                    let bytes =
+                        encode_envelope(MSG_KILL_FEED, tick, &encode_kill_feed(&k), true);
+                    broadcast(&players, OutboundMsg::KillFeed(bytes));
+                }
+                WorldEvent::RoundState(s) => {
+                    log::info!("广播 RoundState: phase={} round={} t={}ms", s.phase, s.round, s.time_ms);
+                    let bytes =
+                        encode_envelope(MSG_ROUND_STATE, tick, &encode_round_state(&s), true);
+                    broadcast(&players, OutboundMsg::RoundState(bytes));
+                }
+                WorldEvent::MatchEnd(w, a, d) => {
+                    let bytes = encode_envelope(
+                        MSG_MATCH_END,
+                        tick,
+                        &encode_match_end(w, a, d, 0),
+                        true,
+                    );
+                    broadcast(&players, OutboundMsg::MatchEnd(bytes));
+                }
+                WorldEvent::Damage(to, dmg) => {
+                    let bytes = encode_envelope(
+                        MSG_DAMAGE,
+                        tick,
+                        &encode_damage(dmg.victim_id, dmg.damage, dmg.victim_health),
+                        true,
+                    );
+                    if let Some(tx) = players.get(&to) {
+                        let _ = tx.try_send(OutboundMsg::Damage(bytes));
+                    }
+                }
+            }
+        }
 
         if !players.is_empty() && tick % snapshot_every == 0 {
             let entities = world.snapshot();
@@ -87,6 +131,12 @@ pub async fn run_tick_loop(cfg: Config, mut rx: mpsc::Receiver<InboundMsg>) {
         if tick % cfg.tick_rate == 0 {
             stats.log_and_reset();
         }
+    }
+}
+
+fn broadcast(players: &HashMap<u32, mpsc::Sender<OutboundMsg>>, out: OutboundMsg) {
+    for tx in players.values() {
+        let _ = tx.try_send(out.clone());
     }
 }
 
@@ -115,13 +165,12 @@ fn handle_inbound(
             world.set_input(player_id, frame);
         }
         InboundMsg::Ping { player_id, client_sent_at_ms } => {
+            let now = now_ms();
+            // 估算 RTT（假设对称）用于命中延迟补偿
+            let est_rtt = now.saturating_sub(client_sent_at_ms).saturating_mul(2);
+            world.set_rtt(player_id, est_rtt);
             if let Some(tx) = players.get(&player_id) {
-                let bytes = encode_envelope(
-                    MSG_PONG,
-                    0,
-                    &encode_pong(client_sent_at_ms, now_ms()),
-                    true,
-                );
+                let bytes = encode_envelope(MSG_PONG, 0, &encode_pong(client_sent_at_ms, now), true);
                 let _ = tx.try_send(OutboundMsg::Pong(bytes));
             }
         }
@@ -284,7 +333,12 @@ where
 {
     while let Some(out) = rx.recv().await {
         let payload = match out {
-            OutboundMsg::Snapshot(b) | OutboundMsg::Pong(b) => b,
+            OutboundMsg::Snapshot(b)
+            | OutboundMsg::Pong(b)
+            | OutboundMsg::RoundState(b)
+            | OutboundMsg::KillFeed(b)
+            | OutboundMsg::MatchEnd(b)
+            | OutboundMsg::Damage(b) => b,
         };
         if sink.send(Message::Binary(payload.into())).await.is_err() {
             break;

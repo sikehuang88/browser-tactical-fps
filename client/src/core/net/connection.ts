@@ -1,7 +1,11 @@
 import {
   MSG,
+  decodeDamage,
   decodeKick,
+  decodeKillFeed,
+  decodeMatchEnd,
   decodePong,
+  decodeRoundState,
   decodeSnapshot,
   decodeWelcome,
   encodeEnvelope,
@@ -29,6 +33,10 @@ export type ServerEvent =
   | { type: 'snapshot'; snapshot: ServerSnapshot }
   | { type: 'pong'; clientSentAtMs: number; serverRecvAtMs: number }
   | { type: 'kick'; reason: number; detail: string }
+  | { type: 'roundState'; phase: number; round: number; timeMs: number; attackScore: number; defendScore: number; bomb: number; bombSite: number; winner: number }
+  | { type: 'killFeed'; attackerId: number; victimId: number; weaponId: number; flags: number; distanceCm: number }
+  | { type: 'matchEnd'; winner: number; attackScore: number; defendScore: number; reason: number }
+  | { type: 'damage'; victimId: number; damage: number; victimHealth: number }
   | { type: 'closed'; code: number; reason: string }
 
 /**
@@ -126,6 +134,49 @@ export class GameConnection {
       case MSG.KICK: {
         const k = decodeKick(env.payload)
         this.queue({ type: 'kick', reason: k.reason, detail: k.detail })
+        break
+      }
+      case MSG.ROUND_STATE: {
+        const s = decodeRoundState(env.payload)
+        this.queue({
+          type: 'roundState',
+          phase: s.phase,
+          round: s.round,
+          timeMs: s.timeMs,
+          attackScore: s.attackScore,
+          defendScore: s.defendScore,
+          bomb: s.bomb,
+          bombSite: s.bombSite,
+          winner: s.winner,
+        })
+        break
+      }
+      case MSG.KILL_FEED: {
+        const k = decodeKillFeed(env.payload)
+        this.queue({
+          type: 'killFeed',
+          attackerId: k.attackerId,
+          victimId: k.victimId,
+          weaponId: k.weaponId,
+          flags: k.flags,
+          distanceCm: k.distanceCm,
+        })
+        break
+      }
+      case MSG.MATCH_END: {
+        const m = decodeMatchEnd(env.payload)
+        this.queue({
+          type: 'matchEnd',
+          winner: m.winner,
+          attackScore: m.attackScore,
+          defendScore: m.defendScore,
+          reason: m.reason,
+        })
+        break
+      }
+      case MSG.DAMAGE: {
+        const d = decodeDamage(env.payload)
+        this.queue({ type: 'damage', victimId: d.victimId, damage: d.damage, victimHealth: d.victimHealth })
         break
       }
       default:

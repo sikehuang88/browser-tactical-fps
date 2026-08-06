@@ -16,6 +16,7 @@ export interface EntitySnapshot {
   crouching: boolean
   health: number
   weaponId: number
+  team: number // 1=攻击方 2=防守方
 }
 
 /** 原始输入（一次客户端 tick 采集，预测与网络共用）。 */

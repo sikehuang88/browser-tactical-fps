@@ -13,6 +13,34 @@ pub const MSG_SNAPSHOT: u8 = 0x04;
 pub const MSG_PING: u8 = 0x05;
 pub const MSG_PONG: u8 = 0x06;
 pub const MSG_KICK: u8 = 0x07;
+pub const MSG_ROUND_STATE: u8 = 0x08;
+pub const MSG_KILL_FEED: u8 = 0x09;
+pub const MSG_MATCH_END: u8 = 0x0A;
+pub const MSG_DAMAGE: u8 = 0x0B;
+
+// 队伍
+pub const TEAM_ATTACK: u8 = 1;
+pub const TEAM_DEFEND: u8 = 2;
+
+// 回合阶段
+pub const PHASE_IDLE: u8 = 0;
+pub const PHASE_FREEZE: u8 = 1;
+pub const PHASE_ACTIVE: u8 = 2;
+pub const PHASE_ROUND_END: u8 = 3;
+pub const PHASE_MATCH_END: u8 = 4;
+
+// 炸弹状态
+pub const BOMB_NONE: u8 = 0;
+pub const BOMB_PLANTING: u8 = 1;
+pub const BOMB_PLANTED: u8 = 2;
+pub const BOMB_DEFUSING: u8 = 3;
+pub const BOMB_EXPLODED: u8 = 4;
+pub const BOMB_DEFUSED: u8 = 5;
+
+// 获胜方
+pub const WINNER_NONE: u8 = 0;
+pub const WINNER_ATTACK: u8 = 1;
+pub const WINNER_DEFEND: u8 = 2;
 
 const FLAG_RELIABLE: u8 = 1 << 0;
 
@@ -62,6 +90,7 @@ pub struct SnapshotEntity {
     pub yaw: i16,
     pub pitch: i16,
     pub health: i16,
+    pub team: u8,
 }
 
 // ---------- 信封 ----------
@@ -161,7 +190,7 @@ pub fn decode_input_frame(p: &[u8]) -> Result<InputFrame, String> {
 // ---------- Snapshot ----------
 
 pub fn encode_snapshot(tick: u32, entities: &[SnapshotEntity]) -> Vec<u8> {
-    let mut out = Vec::with_capacity(5 + entities.len() * 17);
+    let mut out = Vec::with_capacity(5 + entities.len() * 18);
     out.extend_from_slice(&tick.to_be_bytes());
     out.push(entities.len().min(255) as u8);
     for e in entities {
@@ -173,6 +202,7 @@ pub fn encode_snapshot(tick: u32, entities: &[SnapshotEntity]) -> Vec<u8> {
         out.extend_from_slice(&e.yaw.to_be_bytes());
         out.extend_from_slice(&e.pitch.to_be_bytes());
         out.extend_from_slice(&e.health.to_be_bytes());
+        out.push(e.team);
     }
     out
 }
@@ -197,5 +227,70 @@ pub fn encode_kick(reason: u8, detail: &str) -> Vec<u8> {
     let mut out = Vec::with_capacity(1 + detail.len());
     out.push(reason);
     out.extend_from_slice(detail.as_bytes());
+    out
+}
+
+// ---------- RoundState / KillFeed / MatchEnd / Damage ----------
+
+#[derive(Clone, Copy, Debug)]
+pub struct RoundStateMsg {
+    pub phase: u8,
+    pub round: u8,
+    pub time_ms: u16,
+    pub attack_score: u8,
+    pub defend_score: u8,
+    pub bomb: u8,
+    pub bomb_site: u8,
+    pub winner: u8,
+}
+
+pub fn encode_round_state(s: &RoundStateMsg) -> Vec<u8> {
+    let mut out = Vec::with_capacity(9);
+    out.push(s.phase);
+    out.push(s.round);
+    out.extend_from_slice(&s.time_ms.to_be_bytes());
+    out.push(s.attack_score);
+    out.push(s.defend_score);
+    out.push(s.bomb);
+    out.push(s.bomb_site);
+    out.push(s.winner);
+    out
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct KillFeedMsg {
+    pub attacker_id: u32,
+    pub victim_id: u32,
+    pub weapon_id: u8,
+    pub flags: u8,
+    pub distance_cm: u16,
+}
+
+pub fn encode_kill_feed(k: &KillFeedMsg) -> Vec<u8> {
+    let mut out = Vec::with_capacity(12);
+    out.extend_from_slice(&k.attacker_id.to_be_bytes());
+    out.extend_from_slice(&k.victim_id.to_be_bytes());
+    out.push(k.weapon_id);
+    out.push(k.flags);
+    out.extend_from_slice(&k.distance_cm.to_be_bytes());
+    out
+}
+
+pub fn encode_match_end(winner: u8, attack_score: u8, defend_score: u8, reason: u8) -> Vec<u8> {
+    vec![winner, attack_score, defend_score, reason]
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct DamageMsg {
+    pub victim_id: u32,
+    pub damage: u16,
+    pub victim_health: u16,
+}
+
+pub fn encode_damage(victim_id: u32, damage: u16, victim_health: u16) -> Vec<u8> {
+    let mut out = Vec::with_capacity(8);
+    out.extend_from_slice(&victim_id.to_be_bytes());
+    out.extend_from_slice(&damage.to_be_bytes());
+    out.extend_from_slice(&victim_health.to_be_bytes());
     out
 }

@@ -14,6 +14,31 @@ export interface MatchOptions {
   onStatus?: (connected: boolean, rttMs: number) => void
 }
 
+export interface RoundState {
+  phase: number // 0=idle 1=freeze 2=active 3=round_end 4=match_end
+  round: number
+  timeMs: number
+  attackScore: number
+  defendScore: number
+  bomb: number // 0=none 1=planting 2=planted 3=defusing 4=exploded 5=defused
+  bombSite: number
+  winner: number
+}
+
+export interface KillEntry {
+  attackerId: number
+  victimId: number
+  weaponId: number
+  headshot: boolean
+  atMs: number
+}
+
+export interface MatchEndInfo {
+  winner: number
+  attackScore: number
+  defendScore: number
+}
+
 export class Match {
   readonly online: boolean
   local: LocalPlayer
@@ -29,6 +54,12 @@ export class Match {
   private pingTimer = 0
   private readonly onError?: (msg: string) => void
   private readonly onStatus?: (connected: boolean, rttMs: number) => void
+
+  /** 服务器回合状态（供 HUD 展示）。 */
+  round: RoundState = { phase: 0, round: 0, timeMs: 0, attackScore: 0, defendScore: 0, bomb: 0, bombSite: 0, winner: 0 }
+  /** 击杀播报队列（保留最近 6 条）。 */
+  killFeed: KillEntry[] = []
+  matchEnd: MatchEndInfo | null = null
 
   constructor(options: MatchOptions) {
     this.online = options.online
@@ -65,11 +96,13 @@ export class Match {
   update(dt: number, raw: RawInput): void {
     const now = performance.now()
 
-    // 1) 本地玩家预测
-    this.local.step(dt, now, raw)
+    // 1) 本地玩家预测（死亡后冻结，等待服务器下回合重生）
+    if (this.local.state.health > 0) {
+      this.local.step(dt, now, raw)
+    }
 
-    // 2) 上行输入帧（仅在线且已握手）
-    if (this.connected && this.connection) {
+    // 2) 上行输入帧（仅在线、已握手且存活）
+    if (this.connected && this.connection && this.local.state.health > 0) {
       const frame: InputFrame = {
         seq: ++this.seq,
         buttons: raw.buttons,
@@ -112,12 +145,14 @@ export class Match {
 
   /**
    * 基础服务器校正（MOVE-002 简化版）：服务器快照中的本地玩家位置与预测值偏差
-   * 超过阈值时硬对齐。后续里程碑改为基于输入回放与平滑插值校正（NET-005）。
+   * 超过阈值时硬对齐；同时同步血量与队伍（服务器权威）。
    */
   private reconcileLocal(entities: EntitySnapshot[]): void {
     const self = entities.find((e) => e.id === this.localId)
     if (!self) return
     const s = this.local.state
+    s.health = self.health
+    s.team = self.team
     const dx = s.position.x - self.position.x
     const dy = s.position.y - self.position.y
     const dz = s.position.z - self.position.z
@@ -152,8 +187,49 @@ export class Match {
           break
         case 'welcome':
           break
+        case 'roundState':
+          this.round = {
+            phase: ev.phase,
+            round: ev.round,
+            timeMs: ev.timeMs,
+            attackScore: ev.attackScore,
+            defendScore: ev.defendScore,
+            bomb: ev.bomb,
+            bombSite: ev.bombSite,
+            winner: ev.winner,
+          }
+          this.roundUpdatedAtMs = now
+          break
+        case 'killFeed':
+          this.killFeed.push({
+            attackerId: ev.attackerId,
+            victimId: ev.victimId,
+            weaponId: ev.weaponId,
+            headshot: (ev.flags & 1) !== 0,
+            atMs: now,
+          })
+          if (this.killFeed.length > 6) this.killFeed.shift()
+          break
+        case 'matchEnd':
+          this.matchEnd = {
+            winner: ev.winner,
+            attackScore: ev.attackScore,
+            defendScore: ev.defendScore,
+          }
+          break
+        case 'damage':
+          break
       }
     }
+  }
+
+  private roundUpdatedAtMs = 0
+
+  /** 本地倒计时的剩余毫秒。 */
+  roundTimeRemaining(): number {
+    if (this.round.timeMs <= 0) return 0
+    const elapsed = performance.now() - this.roundUpdatedAtMs
+    return Math.max(0, this.round.timeMs - elapsed)
   }
 }
 
@@ -167,5 +243,6 @@ function toSnapshot(s: LocalPlayerState): EntitySnapshot {
     crouching: s.crouching,
     health: s.health,
     weaponId: s.weaponId,
+    team: s.team,
   }
 }

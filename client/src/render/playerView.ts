@@ -23,8 +23,9 @@ export class PlayerView {
   update(state: LocalPlayerState, nowMs: number): void {
     const eye = state.crouching ? EYE_CROUCH : EYE_STAND
     this.camera.position.set(state.position.x, state.position.y + eye, state.position.z)
+    // 约定：pitch 为正朝上（与服务器命中射线 forward_dir 一致）
     this.camera.rotation.set(
-      THREE.MathUtils.degToRad(-state.pitch),
+      THREE.MathUtils.degToRad(state.pitch),
       THREE.MathUtils.degToRad(state.yaw),
       0,
     )

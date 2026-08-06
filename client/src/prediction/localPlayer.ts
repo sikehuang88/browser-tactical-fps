@@ -21,6 +21,7 @@ export interface LocalPlayerState {
   moveSpeed: number
   /** 累计开火次数（渲染层据此播放曳光/枪口效果）。 */
   shotsFired: number
+  team: number // 1=攻击方 2=防守方（由服务器快照同步）
 }
 
 const GRAVITY = 9.81
@@ -69,6 +70,7 @@ export class LocalPlayer {
       reloadEndAtMs: 0,
       moveSpeed: 0,
       shotsFired: 0,
+      team: 0,
     }
   }
 
@@ -86,9 +88,9 @@ export class LocalPlayer {
     const maxSpeed = s.crouching ? CROUCH_SPEED : sprint ? SPRINT_SPEED : WALK_SPEED
     const yawRad = (s.yaw * Math.PI) / 180
 
-    // 相对视角的目标速度（世界空间）
-    const wantX = (forward * Math.sin(yawRad) + strafe * Math.cos(yawRad)) * maxSpeed
-    const wantZ = (forward * Math.cos(yawRad) - strafe * Math.sin(yawRad)) * maxSpeed
+    // 相对视角的目标速度（世界空间）：与第一人称相机一致，yaw=0 → -Z，右 = +X
+    const wantX = (-forward * Math.sin(yawRad) + strafe * Math.cos(yawRad)) * maxSpeed
+    const wantZ = (-forward * Math.cos(yawRad) - strafe * Math.sin(yawRad)) * maxSpeed
     const hasMove = forward * forward + strafe * strafe > 0.01
     const accel = hasMove ? ACCEL : FRICTION
     s.velocity.x = approach(s.velocity.x, wantX, accel * dt)
