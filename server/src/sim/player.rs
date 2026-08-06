@@ -36,8 +36,9 @@ pub struct Player {
     pub reloading: bool,
     pub kills: u32,
     pub deaths: u32,
-    #[allow(dead_code)] // 经济占位，购买系统后续（GAME-003）
     pub money: u32,
+    /// 投掷物库存 [烟雾, 闪光, 高爆]。
+    pub grenades: [u32; 3],
     pub rtt_ms: u32,
     move_speed: f32,
     reload_remaining_ticks: u32,
@@ -48,7 +49,7 @@ pub struct Player {
 
 impl Player {
     pub fn new(id: u32, name: String, spawn: [f32; 3]) -> Self {
-        let weapon = get_weapon(1); // 默认步枪 R1
+        let weapon = get_weapon(super::weapon::WEAPON_P9); // 默认手枪
         Self {
             id,
             name,
@@ -67,7 +68,8 @@ impl Player {
             reloading: false,
             kills: 0,
             deaths: 0,
-            money: 800,
+            money: super::weapon::START_MONEY,
+            grenades: [0; 3],
             rtt_ms: 0,
             move_speed: 0.0,
             reload_remaining_ticks: 0,
@@ -77,9 +79,8 @@ impl Player {
         }
     }
 
-    /// 每回合重置：回出生点、满血满弹。
+    /// 每回合重置：回出生点、满血；装备回初始（资金保留，购买系统每回合重新采购）。
     pub fn reset_for_round(&mut self, spawn: [f32; 3]) {
-        let spec = get_weapon(self.weapon_id);
         self.pos = spawn;
         self.vel = [0.0; 3];
         self.yaw = if self.team == 1 { 0.0 } else { 180.0 };
@@ -88,10 +89,34 @@ impl Player {
         self.crouching = false;
         self.health = 100;
         self.alive = true;
+        self.armor = 0;
+        self.grenades = [0; 3];
+        self.set_primary(super::weapon::WEAPON_P9);
+        self.reloading = false;
+        self.reload_remaining_ticks = 0;
+        self.next_fire_tick = 0;
+    }
+
+    /// 更换主武器并补满弹药。
+    pub fn set_primary(&mut self, weapon_id: u32) {
+        let spec = get_weapon(weapon_id);
+        self.weapon_id = spec.id;
         self.ammo = spec.mag_size;
         self.reloading = false;
         self.reload_remaining_ticks = 0;
         self.next_fire_tick = 0;
+    }
+
+    pub fn grant_money(&mut self, amount: u32) {
+        self.money = (self.money + amount).min(super::weapon::MAX_MONEY);
+    }
+
+    pub fn spend_money(&mut self, amount: u32) -> bool {
+        if self.money < amount {
+            return false;
+        }
+        self.money -= amount;
+        true
     }
 
     pub fn set_rtt(&mut self, ms: u32) {

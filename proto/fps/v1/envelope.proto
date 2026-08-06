@@ -24,5 +24,10 @@ message Envelope {
     KillFeed kill_feed = 18;
     MatchEnd match_end = 19;
     Damage damage = 20;
+    Buy buy = 21;
+    Economy economy = 22;
+    GrenadeSpawn grenade_spawn = 23;
+    GrenadeExplode grenade_explode = 24;
+    Flash flash = 25;
   }
 }

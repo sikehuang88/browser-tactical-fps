@@ -1,6 +1,10 @@
 import {
   MSG,
   decodeDamage,
+  decodeEconomy,
+  decodeFlash,
+  decodeGrenadeExplode,
+  decodeGrenadeSpawn,
   decodeKick,
   decodeKillFeed,
   decodeMatchEnd,
@@ -8,6 +12,7 @@ import {
   decodeRoundState,
   decodeSnapshot,
   decodeWelcome,
+  encodeBuy,
   encodeEnvelope,
   encodeHello,
   encodeInputFrame,
@@ -15,7 +20,8 @@ import {
   parseEnvelope,
 } from './codec'
 import type { Transport } from './transport'
-import type { EntitySnapshot, InputFrame } from '../types'
+import type { EconomyMsg } from './codec'
+import type { EntitySnapshot, InputFrame, Vec3 } from '../types'
 
 export interface WelcomeInfo {
   playerId: number
@@ -37,6 +43,10 @@ export type ServerEvent =
   | { type: 'killFeed'; attackerId: number; victimId: number; weaponId: number; flags: number; distanceCm: number }
   | { type: 'matchEnd'; winner: number; attackScore: number; defendScore: number; reason: number }
   | { type: 'damage'; victimId: number; damage: number; victimHealth: number }
+  | { type: 'economy'; economy: EconomyMsg }
+  | { type: 'grenadeSpawn'; kind: number; ownerId: number; pos: Vec3; vel: Vec3 }
+  | { type: 'grenadeExplode'; kind: number; pos: Vec3 }
+  | { type: 'flash'; strength: number }
   | { type: 'closed'; code: number; reason: string }
 
 /**
@@ -99,6 +109,11 @@ export class GameConnection {
 
   sendPing(): void {
     this.send(MSG.PING, 0, encodePing(Math.round(performance.now())), true)
+  }
+
+  /** 发送购买/退款请求（item_id 见 codec.ITEM 或协议文档）。 */
+  sendBuy(itemId: number): void {
+    this.send(MSG.BUY, 0, encodeBuy(itemId), true)
   }
 
   /** 每帧由对局逻辑调用并消费事件队列。 */
@@ -177,6 +192,25 @@ export class GameConnection {
       case MSG.DAMAGE: {
         const d = decodeDamage(env.payload)
         this.queue({ type: 'damage', victimId: d.victimId, damage: d.damage, victimHealth: d.victimHealth })
+        break
+      }
+      case MSG.ECONOMY: {
+        this.queue({ type: 'economy', economy: decodeEconomy(env.payload) })
+        break
+      }
+      case MSG.GRENADE_SPAWN: {
+        const g = decodeGrenadeSpawn(env.payload)
+        this.queue({ type: 'grenadeSpawn', kind: g.kind, ownerId: g.ownerId, pos: g.pos, vel: g.vel })
+        break
+      }
+      case MSG.GRENADE_EXPLODE: {
+        const g = decodeGrenadeExplode(env.payload)
+        this.queue({ type: 'grenadeExplode', kind: g.kind, pos: g.pos })
+        break
+      }
+      case MSG.FLASH: {
+        const f = decodeFlash(env.payload)
+        this.queue({ type: 'flash', strength: f.strength })
         break
       }
       default:

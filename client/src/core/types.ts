@@ -41,6 +41,8 @@ export interface Settings {
   sensitivity: number // 度/像素
   fov: number
   crosshairColor: string
+  volumeMaster: number // 0..1
+  volumeSfx: number // 0..1
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -50,4 +52,6 @@ export const DEFAULT_SETTINGS: Settings = {
   sensitivity: 0.15,
   fov: 90,
   crosshairColor: '#4ade80',
+  volumeMaster: 0.8,
+  volumeSfx: 1.0,
 }

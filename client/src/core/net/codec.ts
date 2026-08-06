@@ -1,7 +1,7 @@
 // M0 引导二进制线格式编解码。规格见 proto/README.md「M0 引导线格式」。
 // 大端序；坐标厘米 int16，角度厘度 int16。后续以 protobuf 代码生成替换本文件，线格式不变。
 
-import type { EntitySnapshot, InputFrame } from '../types'
+import type { EntitySnapshot, InputFrame, Vec3 } from '../types'
 
 export const PROTOCOL_VERSION = 0x01
 const MAGIC = 0xf5
@@ -18,6 +18,11 @@ export const MSG = {
   KILL_FEED: 0x09,
   MATCH_END: 0x0a,
   DAMAGE: 0x0b,
+  BUY: 0x0c,
+  ECONOMY: 0x0d,
+  GRENADE_SPAWN: 0x0e,
+  GRENADE_EXPLODE: 0x0f,
+  FLASH: 0x10,
 } as const
 
 const FLAG_RELIABLE = 1 << 0
@@ -231,4 +236,70 @@ export function decodeDamage(payload: Uint8Array): DamageMsg {
     damage: dv.getUint16(4),
     victimHealth: dv.getUint16(6),
   }
+}
+
+// ---------- Buy / Economy / Grenade / Flash ----------
+
+export function encodeBuy(itemId: number): Uint8Array {
+  return Uint8Array.of(itemId & 0xff)
+}
+
+export interface EconomyMsg {
+  playerId: number
+  money: number
+  weaponId: number
+  armor: number
+  nSmoke: number
+  nFlash: number
+  nHe: number
+}
+
+export function decodeEconomy(payload: Uint8Array): EconomyMsg {
+  const dv = new DataView(payload.buffer, payload.byteOffset, payload.byteLength)
+  return {
+    playerId: dv.getUint32(0),
+    money: dv.getUint16(4),
+    weaponId: dv.getUint8(6),
+    armor: dv.getUint8(7),
+    nSmoke: dv.getUint8(8),
+    nFlash: dv.getUint8(9),
+    nHe: dv.getUint8(10),
+  }
+}
+
+export interface GrenadeSpawnMsg {
+  kind: number // 1=smoke 2=flash 3=he
+  ownerId: number
+  pos: Vec3 // 米
+  vel: Vec3 // 米/秒
+}
+
+export function decodeGrenadeSpawn(payload: Uint8Array): GrenadeSpawnMsg {
+  const dv = new DataView(payload.buffer, payload.byteOffset, payload.byteLength)
+  let off = 0
+  const kind = dv.getUint8(off); off += 1
+  const ownerId = dv.getUint8(off); off += 1
+  const readVec = () => {
+    const v = { x: dv.getInt16(off) / 100, y: dv.getInt16(off + 2) / 100, z: dv.getInt16(off + 4) / 100 }
+    off += 6
+    return v
+  }
+  return { kind, ownerId, pos: readVec(), vel: readVec() }
+}
+
+export interface GrenadeExplodeMsg {
+  kind: number
+  pos: Vec3
+}
+
+export function decodeGrenadeExplode(payload: Uint8Array): GrenadeExplodeMsg {
+  const dv = new DataView(payload.buffer, payload.byteOffset, payload.byteLength)
+  return {
+    kind: dv.getUint8(0),
+    pos: { x: dv.getInt16(1) / 100, y: dv.getInt16(3) / 100, z: dv.getInt16(5) / 100 },
+  }
+}
+
+export function decodeFlash(payload: Uint8Array): { strength: number } {
+  return { strength: payload[0] ?? 0 }
 }

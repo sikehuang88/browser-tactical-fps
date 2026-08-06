@@ -14,6 +14,13 @@ pub const HIT_RADIUS: f32 = 0.4;
 /// 延迟补偿回溯窗口（≤200ms，64 tick 下 13 tick）。
 pub const MAX_LOOKBACK_TICKS: u64 = 13;
 
+/// 烟雾云（阻挡命中判定，WEAPON-005 玩法效果）。
+#[derive(Clone, Copy)]
+pub struct SmokeBlocker {
+    pub pos: [f32; 3],
+    pub radius: f32,
+}
+
 /// 玩家只读视图快照：战斗阶段避免对 players 的双重借用。
 #[derive(Clone, Copy)]
 pub struct PlayerView {
@@ -191,12 +198,27 @@ pub fn apply_damage(victim: &mut Player, raw_damage: f32, zone: HitZone) -> u16 
 
 /// 命中检测：遍历视图快照中所有存活异队玩家，结合历史位置回溯，
 /// 取最近且未被掩体阻挡的命中。
+/// 射线是否穿过烟雾云（阻挡命中）。
+fn ray_sphere_blocked(origin: [f32; 3], dir: [f32; 3], target_t: f32, smoke: &SmokeBlocker) -> bool {
+    let m = [smoke.pos[0] - origin[0], smoke.pos[1] - origin[1], smoke.pos[2] - origin[2]];
+    let t = dot(m, dir);
+    if t < 0.0 || t > target_t {
+        return false;
+    }
+    let closest = [origin[0] + dir[0] * t, origin[1] + dir[1] * t, origin[2] + dir[2] * t];
+    let d2 = (closest[0] - smoke.pos[0]).powi(2)
+        + (closest[1] - smoke.pos[1]).powi(2)
+        + (closest[2] - smoke.pos[2]).powi(2);
+    d2 < smoke.radius * smoke.radius
+}
+
 #[allow(clippy::too_many_arguments)]
 pub fn fire_hitscan(
     shooter: &PlayerView,
     views: &[PlayerView],
     walls: &[Aabb],
     bounds: &Aabb,
+    smokes: &[SmokeBlocker],
     history: &HashMap<u32, VecDeque<(u64, [f32; 3])>>,
     tick: u64,
     tick_rate: u32,
@@ -243,6 +265,14 @@ pub fn fire_hitscan(
         for wall in walls {
             if let Some(wt) = ray_aabb(origin, dir, wall) {
                 if wt < t - 0.05 {
+                    blocked = true;
+                    break;
+                }
+            }
+        }
+        if !blocked {
+            for smoke in smokes {
+                if ray_sphere_blocked(origin, dir, t, smoke) {
                     blocked = true;
                     break;
                 }

@@ -6,12 +6,27 @@ import { LocalPlayer, type LocalPlayerState } from '../prediction/localPlayer'
 import { SnapshotInterpolator } from '../snapshot/interpolator'
 import { EntityStore } from './entityStore'
 import { GameConnection, type ServerEvent } from '../core/net/connection'
+import type { GrenadeSpawnMsg, GrenadeExplodeMsg } from '../core/net/codec'
+
+/** 客户端效果事件（音频/投掷物视觉），由引擎每帧交给 Effects 处理。 */
+export type MatchEffect =
+  | { type: 'grenadeSpawn'; msg: GrenadeSpawnMsg }
+  | { type: 'grenadeExplode'; msg: GrenadeExplodeMsg }
+  | { type: 'flash'; strength: number }
+
+export interface GrenadeCounts {
+  smoke: number
+  flash: number
+  he: number
+}
 
 export interface MatchOptions {
   online: boolean
   connection?: GameConnection
   onError?: (msg: string) => void
   onStatus?: (connected: boolean, rttMs: number) => void
+  /** 本地玩家击杀时触发（击杀音效）。 */
+  onKill?: () => void
 }
 
 export interface RoundState {
@@ -54,6 +69,7 @@ export class Match {
   private pingTimer = 0
   private readonly onError?: (msg: string) => void
   private readonly onStatus?: (connected: boolean, rttMs: number) => void
+  private readonly onKill?: () => void
 
   /** 服务器回合状态（供 HUD 展示）。 */
   round: RoundState = { phase: 0, round: 0, timeMs: 0, attackScore: 0, defendScore: 0, bomb: 0, bombSite: 0, winner: 0 }
@@ -61,11 +77,21 @@ export class Match {
   killFeed: KillEntry[] = []
   matchEnd: MatchEndInfo | null = null
 
+  /** 经济状态（服务器权威，ECONOMY 消息同步）。 */
+  money = 0
+  armor = 0
+  grenades: GrenadeCounts = { smoke: 0, flash: 0, he: 0 }
+  /** 致盲强度与时间。 */
+  flashStrength = 0
+  flashAtMs = 0
+  private pendingEffects: MatchEffect[] = []
+
   constructor(options: MatchOptions) {
     this.online = options.online
     this.connection = options.connection
     this.onError = options.onError
     this.onStatus = options.onStatus
+    this.onKill = options.onKill
     this.local = new LocalPlayer(0, SPAWN, DEFAULT_COLLISION)
     this.statusText = this.online ? '连接服务器中…' : '本地演示模式'
   }
@@ -209,6 +235,7 @@ export class Match {
             atMs: now,
           })
           if (this.killFeed.length > 6) this.killFeed.shift()
+          if (ev.attackerId === this.localId) this.onKill?.()
           break
         case 'matchEnd':
           this.matchEnd = {
@@ -219,8 +246,46 @@ export class Match {
           break
         case 'damage':
           break
+        case 'economy':
+          this.money = ev.economy.money
+          this.armor = ev.economy.armor
+          this.grenades = {
+            smoke: ev.economy.nSmoke,
+            flash: ev.economy.nFlash,
+            he: ev.economy.nHe,
+          }
+          break
+        case 'grenadeSpawn':
+          this.pendingEffects.push({
+            type: 'grenadeSpawn',
+            msg: { kind: ev.kind, ownerId: ev.ownerId, pos: ev.pos, vel: ev.vel },
+          })
+          break
+        case 'grenadeExplode':
+          this.pendingEffects.push({
+            type: 'grenadeExplode',
+            msg: { kind: ev.kind, pos: ev.pos },
+          })
+          break
+        case 'flash':
+          this.flashStrength = ev.strength
+          this.flashAtMs = performance.now()
+          this.pendingEffects.push({ type: 'flash', strength: ev.strength })
+          break
       }
     }
+  }
+
+  /** 购买/退款请求。 */
+  buyItem(itemId: number): void {
+    this.connection?.sendBuy(itemId)
+  }
+
+  /** 引擎每帧消费的客户端效果事件。 */
+  drainEffects(): MatchEffect[] {
+    const out = this.pendingEffects
+    this.pendingEffects = []
+    return out
   }
 
   private roundUpdatedAtMs = 0

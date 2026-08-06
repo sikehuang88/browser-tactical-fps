@@ -12,6 +12,9 @@ export const BUTTON = {
   ATTACK: 1 << 7,
   USE: 1 << 8,
   RELOAD: 1 << 9,
+  THROW_SMOKE: 1 << 10,
+  THROW_FLASH: 1 << 11,
+  THROW_HE: 1 << 12,
 } as const
 
 export interface InputManagerOptions {
@@ -64,7 +67,10 @@ export class InputManager {
       (this.isDown('ShiftLeft') || this.isDown('ShiftRight') ? BUTTON.SPRINT : 0) |
       (this.isDown('MouseLeft') ? BUTTON.ATTACK : 0) |
       (this.isDown('KeyE') ? BUTTON.USE : 0) |
-      (this.isDown('KeyR') ? BUTTON.RELOAD : 0)
+      (this.isDown('KeyR') ? BUTTON.RELOAD : 0) |
+      (this.isDown('Digit4') ? BUTTON.THROW_HE : 0) |
+      (this.isDown('Digit5') ? BUTTON.THROW_FLASH : 0) |
+      (this.isDown('Digit6') ? BUTTON.THROW_SMOKE : 0)
 
     // 只有指针锁定时才产生视角增量（避免 HUD 上误触发）
     const yawDelta = this.locked ? Math.round(this.mouseDX * this.sensitivity * 100) : 0

@@ -18,6 +18,8 @@ pub const BOMB_SITES: [[f32; 3]; 2] = [[-14.0, 0.0, -14.0], [14.0, 0.0, 14.0]];
 /// 安装/拆除交互距离。
 pub const PLANT_DISTANCE: f32 = 2.0;
 pub const DEFUSE_DISTANCE: f32 = 2.0;
+/// 购买区半径（围绕各自出生点）。
+pub const BUY_ZONE_RADIUS: f32 = 5.0;
 
 pub const ARENA_BOUNDS: Aabb = Aabb {
     min: [-24.0, -1.0, -24.0],

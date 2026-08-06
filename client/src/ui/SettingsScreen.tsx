@@ -72,6 +72,28 @@ export function SettingsScreen({ onBack }: { onBack: () => void }) {
           />
         </label>
 
+        <label className="row">
+          <span>主音量 {Math.round(s.volumeMaster * 100)}%</span>
+          <input
+            type="range"
+            min={0}
+            max={100}
+            value={Math.round(s.volumeMaster * 100)}
+            onChange={(e) => update({ volumeMaster: Number(e.target.value) / 100 })}
+          />
+        </label>
+
+        <label className="row">
+          <span>音效音量 {Math.round(s.volumeSfx * 100)}%</span>
+          <input
+            type="range"
+            min={0}
+            max={100}
+            value={Math.round(s.volumeSfx * 100)}
+            onChange={(e) => update({ volumeSfx: Number(e.target.value) / 100 })}
+          />
+        </label>
+
         <div className="btn-row">
           <button className="btn primary" onClick={save}>
             保存

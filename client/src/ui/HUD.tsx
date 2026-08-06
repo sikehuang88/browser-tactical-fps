@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { Match } from '../game/match'
 import { getWeapon } from '../game/weapons/registry'
+import { SHOP_ITEMS } from '../game/shop'
 import type { Settings } from '../core/types'
 
 const PHASE_LABEL = ['—', '冻结', '行动', '回合结束', '对局结束']
@@ -14,8 +15,17 @@ function formatTime(ms: number): string {
   return `${m}:${sec}`
 }
 
-/** 对局 HUD：回合信息/击杀播报/生命/弹药/炸弹/结算。低频轮询引擎状态。 */
-export function HUD({ match, settings, onExit }: { match: Match | null; settings: Settings; onExit: () => void }) {
+interface HUDProps {
+  match: Match | null
+  settings: Settings
+  onExit: () => void
+  buyMenuOpen: boolean
+  onToggleBuy: () => void
+  onBuy: (itemId: number) => void
+}
+
+/** 对局 HUD：回合信息/击杀播报/生命/弹药/金钱/投掷物/购买菜单/闪光。 */
+export function HUD({ match, settings, onExit, buyMenuOpen, onToggleBuy, onBuy }: HUDProps) {
   const [, setTick] = useState(0)
   useEffect(() => {
     const iv = setInterval(() => setTick((t) => t + 1), 100)
@@ -32,6 +42,8 @@ export function HUD({ match, settings, onExit }: { match: Match | null; settings
   const weapon = getWeapon(s?.weaponId ?? 1)
   const killFeed = match?.killFeed ?? []
   const matchEnd = match?.matchEnd ?? null
+  const g = match?.grenades
+  const inBuyPhase = match?.online && round?.phase === 1
 
   return (
     <div className="hud">
@@ -60,6 +72,7 @@ export function HUD({ match, settings, onExit }: { match: Match | null; settings
 
       <div className="hud-top-left">
         <div>生命 {health}</div>
+        {match?.armor ? <div className="status ok">护甲</div> : null}
         <div className={match?.connected ? 'status ok' : 'status'}>{match?.statusText ?? '…'}</div>
         {match?.connected && <div>RTT {match.rttMs} ms</div>}
       </div>
@@ -76,16 +89,54 @@ export function HUD({ match, settings, onExit }: { match: Match | null; settings
         </div>
       )}
 
+      {/* 底部右侧：武器/弹药/金钱/投掷物 */}
       <div className="hud-bottom-right">
         <div>{weapon?.displayName ?? '—'}</div>
         <div className={reloading ? 'ammo reloading' : 'ammo'}>{ammo}</div>
+        <div className="money">${match?.money ?? 0}</div>
+        {g && (g.smoke > 0 || g.flash > 0 || g.he > 0) && (
+          <div className="grenades">
+            {g.he > 0 && <span className="g-he">✷{g.he}</span>}
+            {g.flash > 0 && <span className="g-flash">◈{g.flash}</span>}
+            {g.smoke > 0 && <span className="g-smoke">☁{g.smoke}</span>}
+          </div>
+        )}
       </div>
 
       <div className="hud-top-right">
+        {match?.online && (
+          <button className="btn small" onClick={onToggleBuy}>
+            购买菜单 (B)
+          </button>
+        )}
         <button className="btn small" onClick={onExit}>
           退出对局
         </button>
       </div>
+
+      {/* 购买菜单（冻结期 + 联网） */}
+      {inBuyPhase && buyMenuOpen && (
+        <div className="buy-menu">
+          <div className="buy-title">购买装备 · 资金 ${match?.money ?? 0}</div>
+          <div className="buy-grid">
+            {SHOP_ITEMS.map((item) => {
+              const affordable = (match?.money ?? 0) >= item.cost
+              return (
+                <button
+                  key={item.id}
+                  className={affordable ? 'buy-item' : 'buy-item disabled'}
+                  disabled={!affordable}
+                  onClick={() => onBuy(item.id)}
+                >
+                  <span>{item.name}</span>
+                  <span className="cost">${item.cost}</span>
+                </button>
+              )
+            })}
+          </div>
+          <div className="buy-hint">点击购买 · 再次购买同款武器即退款 · Esc 关闭</div>
+        </div>
+      )}
 
       {/* 死亡覆盖 */}
       {match?.online && health <= 0 && !matchEnd && (

@@ -17,6 +17,11 @@ pub const MSG_ROUND_STATE: u8 = 0x08;
 pub const MSG_KILL_FEED: u8 = 0x09;
 pub const MSG_MATCH_END: u8 = 0x0A;
 pub const MSG_DAMAGE: u8 = 0x0B;
+pub const MSG_BUY: u8 = 0x0C;
+pub const MSG_ECONOMY: u8 = 0x0D;
+pub const MSG_GRENADE_SPAWN: u8 = 0x0E;
+pub const MSG_GRENADE_EXPLODE: u8 = 0x0F;
+pub const MSG_FLASH: u8 = 0x10;
 
 // 队伍
 pub const TEAM_ATTACK: u8 = 1;
@@ -55,6 +60,14 @@ pub const BTN_SPRINT: u16 = 1 << 6;
 pub const BTN_ATTACK: u16 = 1 << 7;
 pub const BTN_USE: u16 = 1 << 8;
 pub const BTN_RELOAD: u16 = 1 << 9;
+pub const BTN_THROW_SMOKE: u16 = 1 << 10;
+pub const BTN_THROW_FLASH: u16 = 1 << 11;
+pub const BTN_THROW_HE: u16 = 1 << 12;
+
+// 投掷物类型
+pub const GRENADE_SMOKE: u8 = 1;
+pub const GRENADE_FLASH: u8 = 2;
+pub const GRENADE_HE: u8 = 3;
 
 /// 踢出原因（与 KickReason 枚举对应）。
 pub const KICK_VERSION_MISMATCH: u8 = 0;
@@ -293,4 +306,73 @@ pub fn encode_damage(victim_id: u32, damage: u16, victim_health: u16) -> Vec<u8>
     out.extend_from_slice(&damage.to_be_bytes());
     out.extend_from_slice(&victim_health.to_be_bytes());
     out
+}
+
+// ---------- Buy / Economy / Grenade / Flash ----------
+
+pub fn decode_buy(payload: &[u8]) -> Option<u8> {
+    payload.first().copied()
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct EconomyMsg {
+    pub player_id: u32,
+    pub money: u16,
+    pub weapon_id: u8,
+    pub armor: u8,
+    pub n_smoke: u8,
+    pub n_flash: u8,
+    pub n_he: u8,
+}
+
+pub fn encode_economy(e: &EconomyMsg) -> Vec<u8> {
+    let mut out = Vec::with_capacity(11);
+    out.extend_from_slice(&e.player_id.to_be_bytes());
+    out.extend_from_slice(&e.money.to_be_bytes());
+    out.push(e.weapon_id);
+    out.push(e.armor);
+    out.push(e.n_smoke);
+    out.push(e.n_flash);
+    out.push(e.n_he);
+    out
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct GrenadeSpawnMsg {
+    pub kind: u8,
+    pub owner_id: u32,
+    pub pos: [f32; 3],
+    pub vel: [f32; 3],
+}
+
+pub fn encode_grenade_spawn(g: &GrenadeSpawnMsg) -> Vec<u8> {
+    let mut out = Vec::with_capacity(14);
+    out.push(g.kind);
+    out.push(g.owner_id as u8);
+    for i in 0..3 {
+        out.extend_from_slice(&((g.pos[i] * 100.0) as i16).to_be_bytes());
+    }
+    for i in 0..3 {
+        out.extend_from_slice(&((g.vel[i] * 100.0) as i16).to_be_bytes());
+    }
+    out
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct GrenadeExplodeMsg {
+    pub kind: u8,
+    pub pos: [f32; 3],
+}
+
+pub fn encode_grenade_explode(g: &GrenadeExplodeMsg) -> Vec<u8> {
+    let mut out = Vec::with_capacity(7);
+    out.push(g.kind);
+    for i in 0..3 {
+        out.extend_from_slice(&((g.pos[i] * 100.0) as i16).to_be_bytes());
+    }
+    out
+}
+
+pub fn encode_flash(strength: u8) -> Vec<u8> {
+    vec![strength]
 }

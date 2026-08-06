@@ -426,6 +426,96 @@ code {
   max-width: 200px;
 }
 
+/* 金钱 / 投掷物 */
+.hud-bottom-right .money {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--accent);
+  margin-top: 2px;
+}
+
+.hud-bottom-right .grenades {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+  font-size: 13px;
+}
+
+.grenades .g-he {
+  color: #4ade80;
+}
+
+.grenades .g-flash {
+  color: #ffd166;
+}
+
+.grenades .g-smoke {
+  color: #9aa3ad;
+}
+
+/* 购买菜单 */
+.buy-menu {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: rgba(13, 17, 23, 0.94);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 20px 24px;
+  z-index: 35;
+  min-width: 420px;
+  max-width: 92vw;
+}
+
+.buy-title {
+  font-size: 16px;
+  font-weight: 600;
+  margin-bottom: 14px;
+  text-align: center;
+}
+
+.buy-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+}
+
+.buy-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 14px;
+  background: #21262d;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.buy-item:hover:not(.disabled) {
+  background: #2d333b;
+  border-color: var(--accent);
+}
+
+.buy-item.disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.buy-item .cost {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.buy-hint {
+  margin-top: 12px;
+  font-size: 12px;
+  color: var(--muted);
+  text-align: center;
+}
+
 /* 计分板 */
 .scoreboard {
   position: absolute;

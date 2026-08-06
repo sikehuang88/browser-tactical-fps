@@ -12,11 +12,13 @@ use tokio_tungstenite::tungstenite::{Error as WsError, Message};
 
 use crate::config::Config;
 use crate::protocol::{
-    decode_hello, decode_input_frame, decode_ping, encode_damage, encode_envelope, encode_kick,
+    decode_buy, decode_hello, decode_input_frame, decode_ping, encode_damage, encode_economy,
+    encode_envelope, encode_flash, encode_grenade_explode, encode_grenade_spawn, encode_kick,
     encode_kill_feed, encode_match_end, encode_pong, encode_round_state, encode_snapshot,
     encode_welcome, parse_envelope, InputFrame, KICK_SERVER_FULL, KICK_VERSION_MISMATCH,
-    MSG_DAMAGE, MSG_HELLO, MSG_INPUT_FRAME, MSG_KICK, MSG_KILL_FEED, MSG_MATCH_END, MSG_PING,
-    MSG_PONG, MSG_ROUND_STATE, MSG_SNAPSHOT, MSG_WELCOME,
+    MSG_BUY, MSG_DAMAGE, MSG_ECONOMY, MSG_FLASH, MSG_GRENADE_EXPLODE, MSG_GRENADE_SPAWN,
+    MSG_HELLO, MSG_INPUT_FRAME, MSG_KICK, MSG_KILL_FEED, MSG_MATCH_END, MSG_PING, MSG_PONG,
+    MSG_ROUND_STATE, MSG_SNAPSHOT, MSG_WELCOME,
 };
 use crate::sim::{World, WorldEvent};
 use crate::telemetry::TickStats;
@@ -36,6 +38,10 @@ pub enum InboundMsg {
         player_id: u32,
         client_sent_at_ms: u32,
     },
+    Buy {
+        player_id: u32,
+        item_id: u8,
+    },
     Disconnect {
         player_id: u32,
     },
@@ -51,6 +57,10 @@ pub enum OutboundMsg {
     KillFeed(Vec<u8>),
     MatchEnd(Vec<u8>),
     Damage(Vec<u8>),
+    Economy(Vec<u8>),
+    GrenadeSpawn(Vec<u8>),
+    GrenadeExplode(Vec<u8>),
+    Flash(Vec<u8>),
 }
 
 /// 权威模拟循环：固定 tick 频率，批处理输入、步进世界、广播快照。
@@ -113,6 +123,32 @@ pub async fn run_tick_loop(cfg: Config, mut rx: mpsc::Receiver<InboundMsg>) {
                         let _ = tx.try_send(OutboundMsg::Damage(bytes));
                     }
                 }
+                WorldEvent::Economy(to, e) => {
+                    let bytes = encode_envelope(MSG_ECONOMY, tick, &encode_economy(&e), true);
+                    if let Some(tx) = players.get(&to) {
+                        let _ = tx.try_send(OutboundMsg::Economy(bytes));
+                    }
+                }
+                WorldEvent::GrenadeSpawn(g) => {
+                    let bytes =
+                        encode_envelope(MSG_GRENADE_SPAWN, tick, &encode_grenade_spawn(&g), true);
+                    broadcast(&players, OutboundMsg::GrenadeSpawn(bytes));
+                }
+                WorldEvent::GrenadeExplode(g) => {
+                    let bytes = encode_envelope(
+                        MSG_GRENADE_EXPLODE,
+                        tick,
+                        &encode_grenade_explode(&g),
+                        true,
+                    );
+                    broadcast(&players, OutboundMsg::GrenadeExplode(bytes));
+                }
+                WorldEvent::Flash(to, strength) => {
+                    let bytes = encode_envelope(MSG_FLASH, tick, &encode_flash(strength), true);
+                    if let Some(tx) = players.get(&to) {
+                        let _ = tx.try_send(OutboundMsg::Flash(bytes));
+                    }
+                }
             }
         }
 
@@ -172,6 +208,12 @@ fn handle_inbound(
             if let Some(tx) = players.get(&player_id) {
                 let bytes = encode_envelope(MSG_PONG, 0, &encode_pong(client_sent_at_ms, now), true);
                 let _ = tx.try_send(OutboundMsg::Pong(bytes));
+            }
+        }
+        InboundMsg::Buy { player_id, item_id } => {
+            let ok = world.buy(player_id, item_id);
+            if !ok {
+                log::info!("购买被拒绝: player={player_id} item={item_id}（非购买期/不在购买区/资金不足）");
             }
         }
         InboundMsg::Disconnect { player_id } => {
@@ -283,6 +325,17 @@ pub async fn handle_connection(
                             break;
                         }
                     }
+                    MSG_BUY => {
+                        if let Some(item_id) = decode_buy(&env.payload) {
+                            if inbound
+                                .send(InboundMsg::Buy { player_id, item_id })
+                                .await
+                                .is_err()
+                            {
+                                break;
+                            }
+                        }
+                    }
                     MSG_HELLO => { /* 重复握手，忽略 */ }
                     _ => {}
                 }
@@ -338,7 +391,11 @@ where
             | OutboundMsg::RoundState(b)
             | OutboundMsg::KillFeed(b)
             | OutboundMsg::MatchEnd(b)
-            | OutboundMsg::Damage(b) => b,
+            | OutboundMsg::Damage(b)
+            | OutboundMsg::Economy(b)
+            | OutboundMsg::GrenadeSpawn(b)
+            | OutboundMsg::GrenadeExplode(b)
+            | OutboundMsg::Flash(b) => b,
         };
         if sink.send(Message::Binary(payload.into())).await.is_err() {
             break;

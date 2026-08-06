@@ -5,6 +5,7 @@ use std::collections::HashMap;
 
 use super::map::{BOMB_SITES, DEFUSE_DISTANCE, PLANT_DISTANCE, SPAWN_ATTACK, SPAWN_DEFEND};
 use super::player::Player;
+use super::weapon::{DEFUSE_BONUS, LOSS_BASE, LOSS_CAP, LOSS_STREAK_BONUS, PLANT_BONUS, WIN_REWARD};
 use crate::protocol::{
     BOMB_DEFUSED, BOMB_DEFUSING, BOMB_NONE, BOMB_PLANTED, BOMB_PLANTING, BTN_USE,
     PHASE_ACTIVE, PHASE_FREEZE, PHASE_IDLE, PHASE_MATCH_END, PHASE_ROUND_END, TEAM_ATTACK,
@@ -62,6 +63,8 @@ pub struct RoundManager {
     /// 安装/拆除的输入间隙宽限（容忍输入帧与服务器 tick 错位的抖动）。
     plant_grace: u32,
     defuse_grace: u32,
+    loss_streak_attack: u32,
+    loss_streak_defend: u32,
 }
 
 /// 连续多少个 tick 无 USE 输入才取消安装/拆除（3 tick ≈ 47ms）。
@@ -91,6 +94,8 @@ impl RoundManager {
             defuse_ticks: 0,
             plant_grace: 0,
             defuse_grace: 0,
+            loss_streak_attack: 0,
+            loss_streak_defend: 0,
         }
     }
 
@@ -164,18 +169,18 @@ impl RoundManager {
                     // 炸弹爆炸 → 进攻方胜
                     self.bomb = crate::protocol::BOMB_EXPLODED;
                     self.dirty = true;
-                    return self.finish_round(WINNER_ATTACK);
+                    return self.finish_round(WINNER_ATTACK, players);
                 }
                 if self.bomb == BOMB_NONE && self.time_ms == 0 {
                     // 超时未安装 → 防守方胜
-                    return self.finish_round(WINNER_DEFEND);
+                    return self.finish_round(WINNER_DEFEND, players);
                 }
                 let (a_alive, d_alive) = alive_counts(players);
                 if a_alive == 0 {
-                    return self.finish_round(WINNER_DEFEND);
+                    return self.finish_round(WINNER_DEFEND, players);
                 }
                 if d_alive == 0 {
-                    return self.finish_round(WINNER_ATTACK);
+                    return self.finish_round(WINNER_ATTACK, players);
                 }
             }
             PHASE_ROUND_END => {
@@ -207,7 +212,7 @@ impl RoundManager {
                     break;
                 }
             }
-            if let Some((_, site)) = planter {
+            if let Some((planter_id, site)) = planter {
                 self.plant_grace = 0;
                 if self.bomb == BOMB_NONE {
                     self.bomb = BOMB_PLANTING;
@@ -222,6 +227,10 @@ impl RoundManager {
                     self.plant_ticks = 0;
                     self.plant_grace = 0;
                     self.dirty = true;
+                    // 安装奖励
+                    if let Some(p) = players.get_mut(&planter_id) {
+                        p.grant_money(PLANT_BONUS);
+                    }
                 }
             } else if self.bomb == BOMB_PLANTING {
                 self.plant_grace += 1;
@@ -246,7 +255,7 @@ impl RoundManager {
                 defuser = Some(*id);
                 break;
             }
-            if defuser.is_some() {
+            if let Some(defuser_id) = defuser {
                 self.defuse_grace = 0;
                 if self.bomb == BOMB_PLANTED {
                     self.bomb = BOMB_DEFUSING;
@@ -259,7 +268,11 @@ impl RoundManager {
                     self.defuse_ticks = 0;
                     self.defuse_grace = 0;
                     self.dirty = true;
-                    self.finish_round(WINNER_DEFEND);
+                    // 拆除奖励
+                    if let Some(p) = players.get_mut(&defuser_id) {
+                        p.grant_money(DEFUSE_BONUS);
+                    }
+                    self.finish_round(WINNER_DEFEND, players);
                     return;
                 }
             } else if self.bomb == BOMB_DEFUSING {
@@ -274,16 +287,37 @@ impl RoundManager {
         }
     }
 
-    fn finish_round(&mut self, winner: u8) -> RoundOutcome {
+    fn finish_round(&mut self, winner: u8, players: &mut HashMap<u32, Player>) -> RoundOutcome {
         self.phase = PHASE_ROUND_END;
         self.time_ms = self.cfg.round_end_ms;
         self.winner = winner;
         if winner == WINNER_ATTACK {
             self.attack_score += 1;
+            self.loss_streak_attack = 0;
+            self.loss_streak_defend += 1;
         } else if winner == WINNER_DEFEND {
             self.defend_score += 1;
+            self.loss_streak_defend = 0;
+            self.loss_streak_attack += 1;
         }
         self.dirty = true;
+
+        // 经济奖励：赢家固定奖励；输家按连续失败数递增（封顶）
+        for p in players.values_mut() {
+            let is_winner = (winner == WINNER_ATTACK && p.team == TEAM_ATTACK)
+                || (winner == WINNER_DEFEND && p.team == TEAM_DEFEND);
+            if is_winner {
+                p.grant_money(WIN_REWARD);
+            } else {
+                let streak = if p.team == TEAM_ATTACK {
+                    self.loss_streak_attack
+                } else {
+                    self.loss_streak_defend
+                };
+                let reward = (LOSS_BASE + LOSS_STREAK_BONUS * streak.min(4)).min(LOSS_CAP);
+                p.grant_money(reward);
+            }
+        }
 
         if self.attack_score >= self.cfg.rounds_to_win || self.defend_score >= self.cfg.rounds_to_win
         {

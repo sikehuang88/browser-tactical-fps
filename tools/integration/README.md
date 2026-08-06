@@ -13,11 +13,12 @@
 ## 运行
 
 ```bash
-# 终端 1：启动服务器
+# 终端 1：启动服务器（每个测试请用全新服务器实例）
 cd server && cargo run -- --port 9000 --tick-rate 64
 
 # 终端 2：跑测试（需要 Node ≥ 21）
-node tools/integration/combat_test.mjs
+node tools/integration/combat_test.mjs      # 击杀/结算/安装/拆除
+node tools/integration/economy_test.mjs     # 购买/经济/投掷物
 ```
 
-全部场景通过输出 `=== 全部通过 ===`。
+全部场景通过输出 `=== 全部通过 ===`。注意：两个测试会共用服务器对局状态，请勿在同一服务器实例上连续运行，跑完一个后重启服务器再跑下一个。

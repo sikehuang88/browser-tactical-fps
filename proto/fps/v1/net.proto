@@ -141,3 +141,44 @@ message Damage {
   uint32 damage = 2;
   uint32 victim_health = 3;
 }
+
+// C→S 购买/退款请求（GAME-003）。
+message Buy {
+  uint32 item_id = 1; // 1护甲 2步枪 3冲锋枪 4狙击枪 5烟雾 6闪光 7高爆
+}
+
+// S→C 按玩家下发的资金/装备/投掷物状态。
+message Economy {
+  uint32 player_id = 1;
+  uint32 money = 2;
+  uint32 weapon_id = 3;
+  bool armor = 4;
+  uint32 n_smoke = 5;
+  uint32 n_flash = 6;
+  uint32 n_he = 7;
+}
+
+enum GrenadeType {
+  GRENADE_SMOKE = 1;
+  GRENADE_FLASH = 2;
+  GRENADE_HE = 3;
+}
+
+// S→C 投掷物生成（客户端据此渲染飞行轨迹，WEAPON-005）。
+message GrenadeSpawn {
+  GrenadeType type = 1;
+  uint32 owner_id = 2;
+  Vec3 position = 3;
+  Vec3 velocity = 4; // 厘米/秒
+}
+
+// S→C 爆炸/生效。
+message GrenadeExplode {
+  GrenadeType type = 1;
+  Vec3 position = 2;
+}
+
+// S→C 致盲（仅发给被闪玩家）。
+message Flash {
+  uint32 strength = 1; // 0..100
+}

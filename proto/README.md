@@ -58,6 +58,11 @@
 | 0x09 | KillFeed | S→C | ✅ |
 | 0x0A | MatchEnd | S→C | ✅ |
 | 0x0B | Damage | S→C | ✅（仅发给攻击方，伤害摘要） |
+| 0x0C | Buy | C→S | ✅（购买/退款请求） |
+| 0x0D | Economy | S→C | ✅（资金/装备/投掷物数量，按玩家下发） |
+| 0x0E | GrenadeSpawn | S→C | ✅（投掷物生成，客户端据此渲染飞行） |
+| 0x0F | GrenadeExplode | S→C | ✅（爆炸/生效，客户端触发效果） |
+| 0x10 | Flash | S→C | ✅（仅发给被闪玩家，致盲强度） |
 
 ### 负载定义
 
@@ -79,6 +84,8 @@ u32 serverRttMs      # 0 = 未知
 u32 seq
 u16 buttons:  bit0 前移 bit1 后移 bit2 左移 bit3 右移
              bit4 跳跃 bit5 下蹲 bit6 疾跑 bit7 开火
+             bit8 使用 bit9 换弹
+             bit10 投烟雾弹 bit11 投闪光弹 bit12 投高爆手雷
 i16 yawDelta       # 厘度，相对增量
 i16 pitchDelta     # 厘度，相对增量
 i8  forwardAxis    # -127..127
@@ -143,6 +150,41 @@ u8 reason     # 0=先达回合数 1=放弃
 u32 victim_id
 u16 damage
 u16 victim_health
+```
+
+**Buy (0x0C)**（C→S 购买/退款请求）
+```
+u8 item_id   # 1护甲 2步枪 3冲锋枪 4狙击枪 5烟雾 6闪光 7高爆
+```
+
+**Economy (0x0D)**（S→C，按玩家下发资金/装备）
+```
+u32 player_id
+u16 money
+u8  weapon_id    # 主武器
+u8  armor        # 0/1
+u8  n_smoke
+u8  n_flash
+u8  n_he
+```
+
+**GrenadeSpawn (0x0E)**（S→C，投掷物生成）
+```
+u8  type     # 1=烟雾 2=闪光 3=高爆
+u8  owner_id
+i16 x, y, z     # 厘米
+i16 vx, vy, vz  # 厘米/秒
+```
+
+**GrenadeExplode (0x0F)**（S→C，爆炸/生效）
+```
+u8  type
+i16 x, y, z     # 厘米
+```
+
+**Flash (0x10)**（S→C，仅发给被闪玩家）
+```
+u8 strength   # 0..100 致盲强度（已含朝向/距离衰减）
 ```
 
 ### 带宽预估

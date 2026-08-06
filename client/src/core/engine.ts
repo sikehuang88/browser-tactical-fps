@@ -1,6 +1,7 @@
 import { Clock } from './clock'
 import type { InputManager } from './input'
 import type { Match } from '../game/match'
+import type { Effects } from '../game/effects'
 import type { PlayerView } from '../render/playerView'
 import type { EntityView } from '../render/entityView'
 import type { Renderer } from '../render/renderer'
@@ -11,6 +12,8 @@ export interface EngineDeps {
   view: PlayerView
   entityView: EntityView
   renderer: Renderer
+  /** 可选：音效 + 投掷物视觉效果控制器。 */
+  effects?: Effects
 }
 
 export interface EngineOptions extends EngineDeps {
@@ -28,6 +31,7 @@ export class Engine {
   private readonly view: PlayerView
   private readonly entityView: EntityView
   private readonly renderer: Renderer
+  private readonly effects?: Effects
   private readonly stepMs: number
   private readonly clock = new Clock()
   private running = false
@@ -41,6 +45,7 @@ export class Engine {
     this.view = options.view
     this.entityView = options.entityView
     this.renderer = options.renderer
+    this.effects = options.effects
     this.stepMs = 1000 / (options.fixedHz ?? 64)
   }
 
@@ -80,5 +85,9 @@ export class Engine {
   private tick(dt: number): void {
     const raw = this.input.sample()
     this.match.update(dt, raw)
+    if (this.effects) {
+      this.effects.process(this.match.drainEffects(), this.match.localId)
+      this.effects.update(this.match.localState, dt)
+    }
   }
 }
