@@ -1,0 +1,37 @@
+syntax = "proto3";
+
+package fps.v1;
+
+option go_package = "github.com/fpsweb/game/gen/fps/v1;fpsv1";
+
+// 世界坐标统一使用厘米整数，量化编码以压缩带宽。
+message Vec3 {
+  int32 x = 1;
+  int32 y = 2;
+  int32 z = 3;
+}
+
+message EntityId {
+  uint32 id = 1;
+}
+
+enum Team {
+  TEAM_UNSPECIFIED = 0;
+  TEAM_ATTACK = 1;   // 进攻方（爆破）
+  TEAM_DEFEND = 2;   // 防守方
+}
+
+enum RoundResult {
+  ROUND_RESULT_UNSPECIFIED = 0;
+  ROUND_RESULT_ATTACK_WIN = 1;
+  ROUND_RESULT_DEFEND_WIN = 2;
+  ROUND_RESULT_TIMEOUT = 3;
+}
+
+enum MatchOutcome {
+  MATCH_OUTCOME_UNSPECIFIED = 0;
+  MATCH_OUTCOME_ATTACK_WIN = 1;
+  MATCH_OUTCOME_DEFEND_WIN = 2;
+  MATCH_OUTCOME_DRAW = 3;
+  MATCH_OUTCOME_FORFEIT = 4;
+}

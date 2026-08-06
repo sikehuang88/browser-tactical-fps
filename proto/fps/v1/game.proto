@@ -1,0 +1,81 @@
+syntax = "proto3";
+
+package fps.v1;
+
+option go_package = "github.com/fpsweb/game/gen/fps/v1;fpsv1";
+
+// 对局配置（版本化，服务器权威下发）。
+message MatchConfig {
+  string config_version = 1;      // 规则+武器+地图版本指纹
+  uint32 map_id = 2;
+  uint32 rounds_to_win = 3;       // 通常 13/16
+  uint32 round_time_ms = 4;
+  uint32 buy_time_ms = 5;
+  uint32 freeze_time_ms = 6;
+  uint32 max_rounds = 7;          // 含加时
+  bool overtime_enabled = 8;
+}
+
+message PlayerState {
+  EntityId id = 1;
+  Team team = 2;
+  int32 health = 3;
+  int32 armor = 4;
+  int32 money = 5;
+  bool alive = 6;
+  int32 primary_weapon = 7;
+  int32 secondary_weapon = 8;
+  int32 grenades = 9;   // bitfield: 烟/闪/雷/燃
+}
+
+message BombState {
+  enum Phase { PHASE_UNSPECIFIED = 0; PHASE_PICKED = 1; PHASE_PLANTED = 2; PHASE_EXPLODING = 3; }
+  Phase phase = 1;
+  EntityId carrier = 2;
+  Vec3 position = 3;
+  uint32 plant_elapsed_ms = 4;
+  uint32 defuse_elapsed_ms = 5;
+}
+
+message RoundState {
+  uint32 round_number = 1;
+  Team phase_team = 2;       // 本回合进攻方
+  bool buy_phase = 3;
+  bool freeze_phase = 4;
+  bool active = 5;
+  uint32 time_remaining_ms = 6;
+  BombState bomb = 7;
+}
+
+message KillEvent {
+  EntityId attacker = 1;
+  EntityId victim = 2;
+  bool headshot = 3;
+  bool wallbang = 4;
+  uint32 weapon_id = 5;
+  uint32 distance_cm = 6;
+}
+
+message RoundEndEvent {
+  uint32 round_number = 1;
+  RoundResult result = 2;
+  repeated KillEvent kills = 3;
+  uint32 attack_score = 4;
+  uint32 defend_score = 5;
+}
+
+message WeaponConfig {
+  uint32 id = 1;
+  string name = 2;
+  uint32 ammo_capacity = 3;
+  uint32 reserve_capacity = 4;
+  uint32 fire_rate_per_min = 5;
+  int32 damage = 6;
+  uint32 range_falloff_start_cm = 7;
+  uint32 range_falloff_end_cm = 8;
+  uint32 penetration_power = 9;   // 0..100
+  bool automatic = 10;
+  bool deploy_instantly = 11;
+  uint32 reload_time_ms = 12;
+  int32 armor_damage_ratio = 13;  // 千分比
+}

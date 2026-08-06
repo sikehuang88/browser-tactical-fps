@@ -1,0 +1,49 @@
+# 参考部署编排（本机无 Docker 亦可按 README 直接本地运行各组件）。
+# 用途：一键拉起 PostgreSQL + Redis + 业务后端 + 实时游戏服务器。
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: fps
+      POSTGRES_PASSWORD: fps
+      POSTGRES_DB: fps
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fps"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    # 匹配队列/临时状态（可重建，10.2：Redis 仅保存可重建临时状态）
+
+  backend:
+    build:
+      context: ../backend
+    command: ["api", "--addr", ":8080", "--pg-dsn", "postgres://fps:fps@postgres:5432/fps?sslmode=disable"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    ports:
+      - "8080:8080"
+
+  gameserver:
+    build:
+      context: ../server
+    command: ["fpsweb-server", "--port", "9000", "--tick-rate", "64"]
+    ports:
+      - "9000:9000"
+    # 对局实例按队列扩缩容时为有状态独立容器，这里单实例示意
+
+volumes:
+  pgdata:

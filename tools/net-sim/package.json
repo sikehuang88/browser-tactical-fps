@@ -1,0 +1,10 @@
+{
+  "name": "fpsweb-net-sim",
+  "private": true,
+  "version": "0.1.0",
+  "description": "网络模拟代理：延迟/抖动/带宽限制/断连注入（NET-007 骨架）",
+  "type": "module",
+  "scripts": {
+    "start": "node index.js"
+  }
+}

@@ -1,0 +1,91 @@
+syntax = "proto3";
+
+package fps.v1;
+
+option go_package = "github.com/fpsweb/game/gen/fps/v1;fpsv1";
+
+message Version {
+  uint32 major = 1;
+  uint32 minor = 2;
+  uint32 patch = 3;
+}
+
+// C→S 握手：客户端连接后首包必须为 Hello。
+message Hello {
+  Version client_version = 1;
+  string display_name = 2;
+  string session_token = 3; // 业务后端签发的短期访问令牌
+}
+
+// S→C 握手成功。
+message Welcome {
+  uint32 player_id = 1;
+  uint32 tick_rate = 2;
+  uint32 server_rtt_ms = 3; // 0 = 未知
+  MatchConfig match_config = 4;
+}
+
+message InputButtons {
+  bool forward = 1;
+  bool back = 2;
+  bool left = 3;
+  bool right = 4;
+  bool jump = 5;
+  bool crouch = 6;
+  bool sprint = 7;
+  bool attack = 8;
+  bool use = 9;         // 安装/拆除/拾取
+  bool reload = 10;
+}
+
+// C→S 输入帧（高频不可靠通道）。
+message InputFrame {
+  uint32 seq = 1;
+  InputButtons buttons = 2;
+  int32 yaw_delta = 3;   // 厘度相对增量
+  int32 pitch_delta = 4; // 厘度相对增量
+  sint32 forward_axis = 5; // -127..127
+  sint32 strafe_axis = 6;  // -127..127
+  uint32 client_sent_at_ms = 7;
+}
+
+// S→C 世界快照（20~32Hz，实体兴趣管理 + 增量压缩）。
+message Snapshot {
+  uint32 tick = 1;
+  repeated EntitySnapshot entities = 2;
+}
+
+message EntitySnapshot {
+  EntityId id = 1;
+  Vec3 position = 2;      // 厘米
+  int32 yaw = 3;          // 厘度
+  int32 pitch = 4;        // 厘度
+  bool moving = 5;
+  bool crouching = 6;
+  int32 health = 7;
+  int32 weapon_id = 8;    // 0 = 无
+}
+
+// C→S / S→C RTT 探针。
+message Ping {
+  uint32 client_sent_at_ms = 1;
+}
+
+message Pong {
+  uint32 client_sent_at_ms = 1;
+  uint32 server_recv_at_ms = 2;
+}
+
+enum KickReason {
+  KICK_REASON_UNSPECIFIED = 0;
+  KICK_REASON_VERSION_MISMATCH = 1;
+  KICK_REASON_SERVER_FULL = 2;
+  KICK_REASON_PROTOCOL_ERROR = 3;
+  KICK_REASON_BANNED = 4;
+}
+
+// S→C 断开原因。
+message Kick {
+  KickReason reason = 1;
+  string detail = 2;
+}

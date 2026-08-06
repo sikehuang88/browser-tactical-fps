@@ -1,0 +1,24 @@
+syntax = "proto3";
+
+package fps.v1;
+
+import "fps/v1/net.proto";
+import "fps/v1/game.proto";
+
+option go_package = "github.com/fpsweb/game/gen/fps/v1;fpsv1";
+
+// 实时链路信封。高频消息走不可靠通道，reliable=true 的关键消息走可靠通道。
+message Envelope {
+  uint32 protocol_version = 1;
+  bool reliable = 2;
+  uint32 sequence = 3; // 客户端→服务器: 输入帧序号；服务器→客户端: tick
+  oneof payload {
+    Hello hello = 10;
+    Welcome welcome = 11;
+    InputFrame input_frame = 12;
+    Snapshot snapshot = 13;
+    Ping ping = 14;
+    Pong pong = 15;
+    Kick kick = 16;
+  }
+}

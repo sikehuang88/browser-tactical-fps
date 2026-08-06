@@ -1,0 +1,13 @@
+# 业务后端构建镜像（参考）
+FROM golang:1.24-alpine AS build
+WORKDIR /src
+COPY go.mod ./
+COPY . .
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -o /out/api ./cmd/api
+
+FROM alpine:3.20
+RUN adduser -D -u 10001 app
+COPY --from=build /out/api /usr/local/bin/api
+USER app
+EXPOSE 8080
+ENTRYPOINT ["api"]

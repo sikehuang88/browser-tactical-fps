@@ -1,0 +1,33 @@
+# Node / client
+node_modules/
+dist/
+*.local
+.vite/
+
+# Rust / server
+server/target/
+
+# Go / backend
+backend/bin/
+*.exe
+*.test
+
+# Env & secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Generated protocol code
+proto/gen/

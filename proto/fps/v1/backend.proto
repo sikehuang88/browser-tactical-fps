@@ -1,0 +1,72 @@
+syntax = "proto3";
+
+package fps.v1;
+
+option go_package = "github.com/fpsweb/game/gen/fps/v1;fpsv1";
+
+// 业务后端 DTO（HTTPS/REST or gRPC）。实时对局链路不使用这些消息。
+
+message GuestLoginRequest {
+  string device_id = 1;
+  string language = 2;
+}
+
+message GuestLoginResponse {
+  string access_token = 1;      // 短期访问令牌
+  uint32 expires_in_seconds = 2;
+  UserProfile profile = 3;
+}
+
+message UserProfile {
+  string user_id = 1;
+  string display_name = 2;
+  string avatar_url = 3;
+  string region = 4;
+  string language = 5;
+  uint32 level = 6;
+  Rating rating = 7;
+  PenaltyState penalty = 8;
+}
+
+message Rating {
+  string mode = 1;
+  string season = 2;
+  sint32 score = 3;
+  uint32 confidence = 4; // 0..1000
+  string tier = 5;
+}
+
+message PenaltyState {
+  bool active = 1;
+  string type = 2;       // warn / temporary_ban / permanent_ban
+  string reason = 3;
+  uint64 started_at_ms = 4;
+  uint64 ends_at_ms = 5;
+}
+
+message MatchmakingQueueRequest {
+  enum Mode { MODE_UNSPECIFIED = 0; MODE_CASUAL = 1; MODE_RANKED = 2; }
+  Mode mode = 1;
+  uint32 party_size = 2;
+  string region = 3;
+}
+
+message MatchResult {
+  string match_id = 1;
+  uint32 map_id = 2;
+  string started_at = 3;
+  string ended_at = 4;
+  MatchOutcome outcome = 5;
+  sint32 rating_delta = 6;
+  repeated PlayerStat players = 7;
+}
+
+message PlayerStat {
+  string user_id = 1;
+  int32 kills = 2;
+  int32 assists = 3;
+  int32 deaths = 4;
+  int32 mvp = 5;
+  int32 headshot_count = 6;
+  int32 damage_dealt = 7;
+}
