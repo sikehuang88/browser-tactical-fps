@@ -8,7 +8,7 @@
     { "path": "assets/weapons/tactical-knife.glb", "license": "internal", "note": "Draco 压缩；来源凭证待补" },
     { "path": "assets/weapons/m4-pink.glb", "license": "internal", "note": "Draco 压缩；来源凭证待补" },
     { "path": "assets/weapons/laser-cannon.glb", "license": "internal", "note": "Draco 压缩；来源凭证待补" },
-    { "path": "assets/weapons/gatling.glb", "license": "internal", "note": "Draco 压缩；来源凭证待补" },
+    { "path": "assets/weapons/gatling.glb", "license": "internal", "note": "原始模型（未压缩）；来源凭证待补" },
     { "path": "assets/store/商店军械台.glb", "license": "internal", "note": "Draco 压缩；来源凭证待补" },
     { "path": "assets/store/pbr/", "license": "internal", "note": "来源凭证待补" },
     { "path": "assets/characters/", "license": "internal", "note": "Draco 压缩；来源凭证待补" },
