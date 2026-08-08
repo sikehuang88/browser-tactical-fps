@@ -93,6 +93,7 @@ const STORE_ITEMS: StoreItem[] = [
   { id: 'rifle-skin', title: '巴雷特 M82A1', kind: '反器材武器', price: 1800, modelId: 'sniper' },
   { id: 'm4-pink', title: 'M4 粉色', kind: '主武器 · 突击步枪', price: 3200, modelId: 'pinkM4' },
   { id: 'laser-cannon', title: '激光炮', kind: '主武器 · 能量炮', price: 6200, modelId: 'laserCannon' },
+  { id: 'gatling-g8', title: '加特林 G8', kind: '主武器 · 重型机枪', price: 8000, modelId: 'gatling' },
   { id: 'founder-badge', title: '先锋徽章', kind: '身份铭牌', price: 0, owned: true },
 ]
 
