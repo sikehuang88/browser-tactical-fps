@@ -132,7 +132,8 @@ func (s *Server) handleMatchmakingQueue(w http.ResponseWriter, r *http.Request) 
 			writeError(w, http.StatusConflict, "already_queued", "已在匹配队列中", reqID)
 			return
 		}
-		writeError(w, http.StatusBadRequest, "invalid_request", err.Error(), reqID)
+		s.deps.Logger.Error("matchmaking enqueue failed", "err", err, "requestId", reqID, "userId", userIDFrom(r))
+		writeError(w, http.StatusBadRequest, "invalid_request", "匹配请求无效", reqID)
 		return
 	}
 	s.audit(r, "matchmaking_enqueue", userIDFrom(r))

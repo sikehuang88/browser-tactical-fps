@@ -3,6 +3,7 @@ package sqlite
 import (
 	"context"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -161,4 +162,51 @@ func TestExpiredTasksResetOnNextDay(t *testing.T) {
 		return
 	}
 	t.Fatal("rounds task missing")
+}
+
+func TestClaimCheckInConcurrentDoesNotDoubleReward(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "checkin-race.db")
+	st, err := New(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	now := time.Date(2026, 8, 8, 12, 0, 0, 0, time.UTC)
+	u := &store.User{ID: "g_checkin_race", DisplayName: "race-user", Region: "cn", Language: "zh-CN", Level: 1, RatingScore: 1000, Credits: 2450, CreatedAt: now, LastSeenAt: now}
+	if err := st.CreateUser(ctx, u); err != nil {
+		t.Fatal(err)
+	}
+
+	const workers = 8
+	var wg sync.WaitGroup
+	results := make([]store.CheckIn, workers)
+	for i := 0; i < workers; i++ {
+		wg.Add(1)
+		go func(index int) {
+			defer wg.Done()
+			result, claimErr := st.ClaimCheckIn(ctx, u.ID, now)
+			if claimErr == nil {
+				results[index] = result
+			}
+		}(i)
+	}
+	wg.Wait()
+
+	rewarded := 0
+	for _, result := range results {
+		if result.Reward > 0 {
+			rewarded++
+		}
+	}
+	if rewarded != 1 {
+		t.Fatalf("签到应只发一次奖，实际 %d 次", rewarded)
+	}
+	got, err := st.GetUser(ctx, u.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Credits != 2450+100 {
+		t.Fatalf("credits 应为 2550，实际 %d", got.Credits)
+	}
 }

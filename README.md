@@ -65,6 +65,8 @@ curl http://localhost:8080/healthz
 curl -X POST http://localhost:8080/api/v1/auth/guest
 ```
 
+可选环境变量：`FPSWEB_ALLOWED_ORIGINS`（逗号分隔的前端来源白名单，默认本地开发地址），生产部署请显式配置。
+
 ### 网络模拟联调（延迟/抖动/带宽）
 
 在客户端与游戏服务器之间插入代理，体验弱网效果：
@@ -120,3 +122,4 @@ docker compose -f deploy/docker-compose.yml up -d   # 拉起 postgres/redis/back
 - 实时对局链路与业务 API 严格隔离。
 - 游戏配置/武器/地图均版本化。
 - 高频快照走不可靠通道，关键事件走可靠通道。
+- 运行时资源由 `client/public/assets-manifest.json` 授权清单登记，构建期强制校验：未登记资源不打包。

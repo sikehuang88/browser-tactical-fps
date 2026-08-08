@@ -854,6 +854,23 @@ mod tests {
     }
 
     #[test]
+    fn rtt_mutation_is_rejected() {
+        let mut world = World::new(64);
+        world.add_player(1, "player".into());
+
+        world.set_rtt(1, 200);
+        assert_eq!(world.players[&1].rtt_ms, 200);
+
+        // 与历史值突变超过 60ms 的上报被拒绝，保持原值。
+        world.set_rtt(1, 0);
+        assert_eq!(world.players[&1].rtt_ms, 200);
+
+        // 合理波动仍被接受。
+        world.set_rtt(1, 150);
+        assert_eq!(world.players[&1].rtt_ms, 150);
+    }
+
+    #[test]
     fn planted_bomb_survives_attacker_elimination() {
         let mut world = active_world();
         world.round.bomb = BOMB_PLANTED;

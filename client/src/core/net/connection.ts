@@ -17,6 +17,7 @@ import {
   encodeHello,
   encodeInputFrame,
   encodePing,
+  encodePingAck,
   parseEnvelope,
 } from './codec'
 import type { Transport } from './transport'
@@ -145,6 +146,8 @@ export class GameConnection {
       case MSG.PONG: {
         const p = decodePong(env.payload)
         this.measuredRttMs = Math.max(0, Math.min(1000, Math.round(Date.now() - p.clientSentAtMs)))
+        // 回执给服务器，让服务器用单一时钟实测 RTT（不依赖客户端时钟）。
+        this.send(MSG.PING_ACK, 0, encodePingAck(p.clientSentAtMs), true)
         this.queue({ type: 'pong', clientSentAtMs: p.clientSentAtMs, serverRecvAtMs: p.serverRecvAtMs })
         break
       }

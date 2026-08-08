@@ -23,6 +23,7 @@ export const MSG = {
   GRENADE_SPAWN: 0x0e,
   GRENADE_EXPLODE: 0x0f,
   FLASH: 0x10,
+  PING_ACK: 0x11,
 } as const
 
 const FLAG_RELIABLE = 1 << 0
@@ -153,6 +154,13 @@ export function encodePing(clientSentAtMs: number, measuredRttMs = 0): Uint8Arra
   const dv = new DataView(out.buffer)
   dv.setUint32(0, clientSentAtMs >>> 0)
   dv.setUint32(4, measuredRttMs >>> 0)
+  return out
+}
+
+export function encodePingAck(clientSentAtMs: number): Uint8Array {
+  const out = new Uint8Array(4)
+  const dv = new DataView(out.buffer)
+  dv.setUint32(0, clientSentAtMs >>> 0)
   return out
 }
 

@@ -63,6 +63,7 @@
 | 0x0E | GrenadeSpawn | S→C | ✅（投掷物生成，客户端据此渲染飞行） |
 | 0x0F | GrenadeExplode | S→C | ✅（爆炸/生效，客户端触发效果） |
 | 0x10 | Flash | S→C | ✅（仅发给被闪玩家，致盲强度） |
+| 0x11 | PingAck | C→S | ✅（客户端收到 Pong 后回执，服务器据此实测 RTT） |
 
 ### 负载定义
 
@@ -113,6 +114,11 @@ per entity:
 ```
 Ping: u32 clientSentAtMs, u32 measuredRttMs  # measuredRttMs 保留字段；服务器以自身时钟实测 RTT，不信任客户端上报
 Pong: u32 clientSentAtMs, u32 serverRecvAtMs
+```
+
+**PingAck (0x11)**（客户端收到 Pong 后回执）
+```
+u32 clientSentAtMs  # 回显 Pong 中的时间戳，服务器与发送 Pong 的时刻配对实测 RTT
 ```
 
 **Kick (0x07)**

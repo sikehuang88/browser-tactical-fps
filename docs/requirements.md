@@ -160,3 +160,11 @@ Tick / Snapshot / Client Prediction / Reconciliation / Lag Compensation / Intere
 ---
 
 *本文档为仓库内项目契约。脚手架各模块的未实现项以 `TODO(Mx)` 标记对应里程碑。*
+
+---
+
+## 范围变更记录（2026-08-08）
+
+- **Tauri 桌面壳**（`client/src-tauri`）：作为开发/分发便利的附加壳，不改变「浏览器内直接运行」的首发定位；构建生成物不入库，正式纳入范围前按 §19 再评审。
+- **资产授权清单**：新增 `client/public/assets-manifest.json`，构建期强制校验（未登记资源不打包），落实 §8「只加载签名清单内资源」。
+- **后端 CORS**：白名单支持 `FPSWEB_ALLOWED_ORIGINS` 环境变量（逗号分隔），未配置时回落本地开发地址。

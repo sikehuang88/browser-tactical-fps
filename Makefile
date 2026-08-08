@@ -19,7 +19,7 @@ client-dev:
 	cd client && npm run dev
 
 client-build:
-	cd client && npm run build
+	cd client && node scripts/check-assets-manifest.mjs && npm run build && node scripts/check-dist-size.mjs 35
 
 server-run:
 	cd server && cargo run -- --port 9000 --tick-rate 64
@@ -41,6 +41,6 @@ build:
 	cd backend && go build ./...
 
 check:
-	cd client && npx tsc --noEmit
+	cd client && npx tsc --noEmit && node scripts/check-assets-manifest.mjs
 	cd server && cargo build && cargo test --quiet
 	cd backend && go build ./... && go test ./...

@@ -13,13 +13,13 @@ use tokio_tungstenite::tungstenite::{Error as WsError, Message};
 
 use crate::config::Config;
 use crate::protocol::{
-    decode_buy, decode_hello, decode_input_frame, decode_ping, encode_damage, encode_economy,
-    encode_envelope, encode_flash, encode_grenade_explode, encode_grenade_spawn, encode_kick,
-    encode_kill_feed, encode_match_end, encode_pong, encode_round_state, encode_snapshot,
-    encode_welcome, parse_envelope, InputFrame, KICK_SERVER_FULL, KICK_VERSION_MISMATCH, MSG_BUY,
-    MSG_DAMAGE, MSG_ECONOMY, MSG_FLASH, MSG_GRENADE_EXPLODE, MSG_GRENADE_SPAWN, MSG_HELLO,
-    MSG_INPUT_FRAME, MSG_KICK, MSG_KILL_FEED, MSG_MATCH_END, MSG_PING, MSG_PONG, MSG_ROUND_STATE,
-    MSG_SNAPSHOT, MSG_WELCOME,
+    decode_buy, decode_hello, decode_input_frame, decode_ping, decode_ping_ack, encode_damage,
+    encode_economy, encode_envelope, encode_flash, encode_grenade_explode, encode_grenade_spawn,
+    encode_kick, encode_kill_feed, encode_match_end, encode_pong, encode_round_state,
+    encode_snapshot, encode_welcome, parse_envelope, InputFrame, KICK_SERVER_FULL,
+    KICK_VERSION_MISMATCH, MSG_BUY, MSG_DAMAGE, MSG_ECONOMY, MSG_FLASH, MSG_GRENADE_EXPLODE,
+    MSG_GRENADE_SPAWN, MSG_HELLO, MSG_INPUT_FRAME, MSG_KICK, MSG_KILL_FEED, MSG_MATCH_END,
+    MSG_PING, MSG_PING_ACK, MSG_PONG, MSG_ROUND_STATE, MSG_SNAPSHOT, MSG_WELCOME,
 };
 use crate::sim::{World, WorldEvent};
 use crate::telemetry::TickStats;
@@ -46,6 +46,10 @@ pub enum InboundMsg {
         player_id: u32,
         client_sent_at_ms: u32,
         measured_rtt_ms: u32,
+    },
+    PingAck {
+        player_id: u32,
+        client_sent_at_ms: u32,
     },
     Buy {
         player_id: u32,
@@ -84,6 +88,7 @@ pub async fn run_tick_loop(cfg: Config, mut rx: mpsc::Receiver<InboundMsg>) {
     let mut next_id: u32 = 0;
     let mut tick: u32 = 0;
     let dt = 1.0 / cfg.tick_rate as f32;
+    let mut pending_pings: HashMap<(u32, u32), Instant> = HashMap::new();
 
     let interval_dur = Duration::from_micros((1_000_000_f64 / cfg.tick_rate as f64) as u64);
     let mut interval = tokio::time::interval(interval_dur);
@@ -103,6 +108,7 @@ pub async fn run_tick_loop(cfg: Config, mut rx: mpsc::Receiver<InboundMsg>) {
                 &mut next_id,
                 &mut stats,
                 &cfg,
+                &mut pending_pings,
             );
         }
 
@@ -204,6 +210,7 @@ fn handle_inbound(
     next_id: &mut u32,
     stats: &mut TickStats,
     cfg: &Config,
+    pending_pings: &mut HashMap<(u32, u32), Instant>,
 ) {
     match msg {
         InboundMsg::Register {
@@ -235,12 +242,27 @@ fn handle_inbound(
             measured_rtt_ms,
         } => {
             let now = now_ms();
-            // RTT 采用客户端同钟实测值（见 world.set_rtt 的突变校验）。
+            // 记录发送 Pong 的时刻，等待客户端 PingAck 配对实测 RTT。
+            pending_pings.insert((player_id, client_sent_at_ms), Instant::now());
+            if pending_pings.len() > 2048 {
+                pending_pings.clear();
+            }
+            // 过渡兜底：客户端同钟实测值 + 突变校验（PingAck 到达后覆盖）。
             world.set_rtt(player_id, measured_rtt_ms);
             if let Some(tx) = players.get(&player_id) {
                 let bytes =
                     encode_envelope(MSG_PONG, 0, &encode_pong(client_sent_at_ms, now), true);
                 let _ = tx.reliable.try_send(OutboundMsg::Pong(bytes));
+            }
+        }
+        InboundMsg::PingAck {
+            player_id,
+            client_sent_at_ms,
+        } => {
+            if let Some(sent) = pending_pings.remove(&(player_id, client_sent_at_ms)) {
+                // 单一时钟实测 RTT：客户端时间戳只作为配对键，不参与计算。
+                let rtt = sent.elapsed().as_millis().min(200) as u32;
+                world.set_rtt(player_id, rtt);
             }
         }
         InboundMsg::Buy { player_id, item_id } => {
@@ -393,6 +415,20 @@ pub async fn handle_connection(
                             .is_err()
                         {
                             break;
+                        }
+                    }
+                    MSG_PING_ACK => {
+                        if let Some(ts) = decode_ping_ack(&env.payload) {
+                            if inbound
+                                .send(InboundMsg::PingAck {
+                                    player_id,
+                                    client_sent_at_ms: ts,
+                                })
+                                .await
+                                .is_err()
+                            {
+                                break;
+                            }
                         }
                     }
                     MSG_BUY => {

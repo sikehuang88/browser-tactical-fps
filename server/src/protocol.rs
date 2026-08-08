@@ -22,6 +22,7 @@ pub const MSG_ECONOMY: u8 = 0x0D;
 pub const MSG_GRENADE_SPAWN: u8 = 0x0E;
 pub const MSG_GRENADE_EXPLODE: u8 = 0x0F;
 pub const MSG_FLASH: u8 = 0x10;
+pub const MSG_PING_ACK: u8 = 0x11;
 
 // 队伍
 pub const TEAM_ATTACK: u8 = 1;
@@ -241,6 +242,13 @@ pub fn decode_ping(payload: &[u8]) -> (u32, u32) {
         0
     };
     (sent, measured_rtt)
+}
+
+pub fn decode_ping_ack(payload: &[u8]) -> Option<u32> {
+    if payload.len() < 4 {
+        return None;
+    }
+    Some(u32::from_be_bytes([payload[0], payload[1], payload[2], payload[3]]))
 }
 
 pub fn encode_pong(client_sent_at_ms: u32, server_recv_at_ms: u32) -> Vec<u8> {
