@@ -9,7 +9,9 @@ import {
   type GameplayModelId,
 } from './gameplayAssets'
 import { traceDistance } from './trace'
-import { ShaderTracerStyle, TracerSystem, WhipTracerStyle } from './tracers'
+import { TracerSystem } from './tracers'
+import { createTracerStyle } from './tracerStyles'
+import { FALLBACK_TRACER_VISUAL, type TracerVisual } from '../core/tracerShop'
 
 const TRACER_MAX_DISTANCE = 120
 const LASER_BEAM_LIFETIME_MS = 180
@@ -64,16 +66,14 @@ export class PlayerView {
   constructor(
     private readonly camera: THREE.PerspectiveCamera,
     private readonly scene: THREE.Scene,
-    options: { effectsQuality?: 'low' | 'high' } = {},
+    options: { effectsQuality?: 'low' | 'high'; tracerVisual?: TracerVisual } = {},
   ) {
     this.defaultFov = camera.fov
     this.effectsQuality = options.effectsQuality ?? 'high'
     // 曳光属于竞技信息：低画质也保留（用更省的 Whip 样式），只削减粒子/抛壳。
     this.tracerSystem = new TracerSystem(
       scene,
-      this.effectsQuality === 'low'
-        ? new WhipTracerStyle({ lifetimeMs: 90 })
-        : new ShaderTracerStyle(),
+      createTracerStyle(options.tracerVisual ?? FALLBACK_TRACER_VISUAL, this.effectsQuality),
     )
     this.modelMount.add(this.fallback)
     this.weapon.add(this.modelMount)
@@ -249,6 +249,11 @@ export class PlayerView {
       ;(casing.mesh.material as THREE.Material).dispose()
     }
     this.shellCasings.length = 0
+  }
+
+  /** 装备的曳光皮肤变更时热切换，无需重建视图。 */
+  setTracerVisual(visual: TracerVisual): void {
+    this.tracerSystem.setStyle(createTracerStyle(visual, this.effectsQuality))
   }
 
   private setWeaponModel(weaponId: number): void {

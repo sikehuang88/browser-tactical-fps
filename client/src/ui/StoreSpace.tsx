@@ -6,6 +6,7 @@ import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js'
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { createGameplayModel, disposeGameplayModel, gameplayModelRotationY, type GameplayModelId } from '../render/gameplayAssets'
+import { TracerShop } from './TracerShop'
 
 export interface StoreDisplayItem {
   id: string
@@ -58,6 +59,7 @@ export function StoreSpace({ items, credits, ownedItems, onBuy, onClose }: Store
   const [selectedId, setSelectedId] = useState(selectedIdRef.current)
   const [loading, setLoading] = useState(true)
   const [previewWeapon, setPreviewWeapon] = useState<{ item: StoreDisplayItem; modelId: GameplayModelId } | null>(null)
+  const [tracerShopOpen, setTracerShopOpen] = useState(false)
 
   const selectedItem = useMemo(
     () => items.find((item) => item.id === selectedId) ?? items[0],
@@ -628,9 +630,16 @@ export function StoreSpace({ items, credits, ownedItems, onBuy, onClose }: Store
         </div>
         <div className="store-space-actions">
           <div className="store-space-balance"><Coins size={17} /><span>战备点</span><strong>{credits.toLocaleString()}</strong></div>
+          <button className="store-space-tracer" onClick={() => setTracerShopOpen(true)} title="曳光弹商店">
+            曳光弹
+          </button>
           <button className="store-space-close" onClick={onClose} aria-label="离开补给站" title="离开补给站"><X size={21} /></button>
         </div>
       </header>
+
+      {tracerShopOpen && (
+        <TracerShop onClose={() => setTracerShopOpen(false)} />
+      )}
 
       {loading && <div className="store-space-loading">军械陈列装载中</div>}
 

@@ -71,6 +71,14 @@ CREATE TABLE IF NOT EXISTS user_checkins (
  user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
  last_date TEXT NOT NULL DEFAULT '', streak INTEGER NOT NULL DEFAULT 0,
  updated_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS user_tracers (
+ user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, item_id TEXT NOT NULL,
+ purchased_at TEXT NOT NULL, PRIMARY KEY(user_id, item_id)
+);
+CREATE TABLE IF NOT EXISTS user_tracer_equipped (
+ user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+ item_id TEXT NOT NULL, updated_at TEXT NOT NULL
 );`)
 	if err != nil {
 		return err
@@ -370,6 +378,107 @@ func (s *Store) ensureTasks(ctx context.Context, userID string, now time.Time) e
 		}
 	}
 	return nil
+}
+
+// ---------- 曳光弹（cosmetics） ----------
+
+func (s *Store) GetTracerLoadout(ctx context.Context, userID string) (store.TracerLoadout, error) {
+	u, err := s.GetUser(ctx, userID)
+	if err != nil {
+		return store.TracerLoadout{}, err
+	}
+	owned, err := s.ownedTracers(ctx, userID)
+	if err != nil {
+		return store.TracerLoadout{}, err
+	}
+	var equipped string
+	err = s.db.QueryRowContext(ctx, `SELECT item_id FROM user_tracer_equipped WHERE user_id=?`, userID).Scan(&equipped)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return store.TracerLoadout{}, err
+	}
+	return store.TracerLoadout{Owned: owned, EquippedID: equipped, Credits: u.Credits}, nil
+}
+
+// PurchaseTracer 以「条件扣费」保证原子性：余额不足时 UPDATE 影响 0 行，
+// 不存在先读后写的竞态；已拥有时直接返回，不重复扣费（幂等）。
+func (s *Store) PurchaseTracer(ctx context.Context, userID, itemID string, price int32, now time.Time) (store.TracerLoadout, error) {
+	if _, err := s.GetUser(ctx, userID); err != nil {
+		return store.TracerLoadout{}, err
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return store.TracerLoadout{}, err
+	}
+	defer tx.Rollback()
+
+	var owned int
+	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM user_tracers WHERE user_id=? AND item_id=?`, userID, itemID).Scan(&owned); err != nil {
+		return store.TracerLoadout{}, err
+	}
+	if owned == 0 {
+		// 条件扣费：只有余额足够才会真正扣减，否则影响行数为 0。
+		result, err := tx.ExecContext(ctx,
+			`UPDATE users SET credits = credits - ? WHERE id = ? AND credits >= ?`, price, userID, price)
+		if err != nil {
+			return store.TracerLoadout{}, err
+		}
+		n, err := result.RowsAffected()
+		if err != nil {
+			return store.TracerLoadout{}, err
+		}
+		if n == 0 {
+			return store.TracerLoadout{}, store.ErrInsufficientCredits
+		}
+		if _, err := tx.ExecContext(ctx,
+			`INSERT INTO user_tracers(user_id,item_id,purchased_at) VALUES(?,?,?)
+			 ON CONFLICT(user_id,item_id) DO NOTHING`, userID, itemID, stamp(now.UTC())); err != nil {
+			return store.TracerLoadout{}, err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return store.TracerLoadout{}, err
+	}
+	return s.GetTracerLoadout(ctx, userID)
+}
+
+func (s *Store) EquipTracer(ctx context.Context, userID, itemID string) (store.TracerLoadout, error) {
+	if _, err := s.GetUser(ctx, userID); err != nil {
+		return store.TracerLoadout{}, err
+	}
+	var owned int
+	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM user_tracers WHERE user_id=? AND item_id=?`, userID, itemID).Scan(&owned); err != nil {
+		return store.TracerLoadout{}, err
+	}
+	if owned == 0 {
+		// 免费默认项由服务层先用 price=0 的 PurchaseTracer 幂等授予，
+		// 因此这里只认购买记录，无需为默认项开特例。
+		return store.TracerLoadout{}, store.ErrNotOwned
+	}
+	if _, err := s.db.ExecContext(ctx,
+		`INSERT INTO user_tracer_equipped(user_id,item_id,updated_at) VALUES(?,?,?)
+		 ON CONFLICT(user_id) DO UPDATE SET item_id=excluded.item_id,updated_at=excluded.updated_at`,
+		userID, itemID, stamp(time.Now().UTC())); err != nil {
+		return store.TracerLoadout{}, err
+	}
+	return s.GetTracerLoadout(ctx, userID)
+}
+
+func (s *Store) ownedTracers(ctx context.Context, userID string) ([]string, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT item_id FROM user_tracers WHERE user_id=?`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	owned := []string{}
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		owned = append(owned, id)
+	}
+	sort.Strings(owned)
+	return owned, rows.Err()
 }
 
 func (s *Store) Close() error { return s.db.Close() }

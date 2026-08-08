@@ -57,7 +57,7 @@ function deviceId(): string {
   return value
 }
 
-async function request<T>(path: string, init: RequestInit = {}, token?: string): Promise<T> {
+export async function request<T>(path: string, init: RequestInit = {}, token?: string): Promise<T> {
   const headers = new Headers(init.headers)
   headers.set('Content-Type', 'application/json')
   if (token) headers.set('Authorization', `Bearer ${token}`)
@@ -73,7 +73,7 @@ async function request<T>(path: string, init: RequestInit = {}, token?: string):
   return await response.json() as T
 }
 
-async function accessToken(): Promise<string> {
+export async function accessToken(): Promise<string> {
   const existing = localStorage.getItem(TOKEN_KEY)
   if (existing) return existing
   const body = await request<GuestLoginResponse>('/api/v1/auth/guest', {

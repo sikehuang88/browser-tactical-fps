@@ -11,6 +11,7 @@ import { Effects } from './effects'
 import { GameConnection } from '../core/net/connection'
 import { createTransport } from '../core/net/factory'
 import { loadSettings } from '../ui/settings'
+import { cachedTracerVisual } from '../core/tracerShop'
 import { HUD } from '../ui/HUD'
 import { Scoreboard } from '../ui/Scoreboard'
 import type { GameModeId, Settings } from '../core/types'
@@ -136,6 +137,7 @@ export function MatchScreen({
     requestLockRef.current = () => input.requestLock()
     const view = new PlayerView(renderer.camera, renderer.scene, {
       effectsQuality: settings.effectsQuality,
+      tracerVisual: cachedTracerVisual() ?? undefined,
     })
     const entityView = new EntityView(renderer.scene)
 

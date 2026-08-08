@@ -10,7 +10,8 @@ import {
   type OperatorId,
 } from './characterAssets'
 import { createGameplayModel, disposeGameplayModel, gameplayModelForWeapon, gameplayModelRotationY, type GameplayModelId } from './gameplayAssets'
-import { ShaderTracerStyle, TracerSystem, type TracerSpawn } from './tracers'
+import { TracerSystem, type TracerSpawn } from './tracers'
+import { createTracerStyle } from './tracerStyles'
 import { traceDistance } from './trace'
 
 interface PlayerRender {
@@ -37,11 +38,17 @@ export class EntityView {
   constructor(private readonly scene: THREE.Scene) {
     this.teammateTracers = new TracerSystem(
       scene,
-      new ShaderTracerStyle({ coreColor: 0xe8f6ff, glowColor: 0x7ec8ff }),
+      createTracerStyle(
+        { style: 'shader', coreColor: '#e8f6ff', glowColor: '#7ec8ff', radiusM: 0.02, speedMps: 900, trailM: 12, lifetimeMs: 90 },
+        'high',
+      ),
     )
     this.enemyTracers = new TracerSystem(
       scene,
-      new ShaderTracerStyle({ coreColor: 0xffd9cf, glowColor: 0xff7a5c }),
+      createTracerStyle(
+        { style: 'shader', coreColor: '#ffd9cf', glowColor: '#ff7a5c', radiusM: 0.02, speedMps: 900, trailM: 12, lifetimeMs: 90 },
+        'high',
+      ),
     )
     for (const id of ['vanguard', 'sentinel'] as const) {
       void loadOperatorAsset(id)
@@ -123,11 +130,17 @@ export class EntityView {
     this.enemyTracers.dispose()
     this.teammateTracers = new TracerSystem(
       this.scene,
-      new ShaderTracerStyle({ coreColor: 0xe8f6ff, glowColor: 0x7ec8ff }),
+      createTracerStyle(
+        { style: 'shader', coreColor: '#e8f6ff', glowColor: '#7ec8ff', radiusM: 0.02, speedMps: 900, trailM: 12, lifetimeMs: 90 },
+        'high',
+      ),
     )
     this.enemyTracers = new TracerSystem(
       this.scene,
-      new ShaderTracerStyle({ coreColor: 0xffd9cf, glowColor: 0xff7a5c }),
+      createTracerStyle(
+        { style: 'shader', coreColor: '#ffd9cf', glowColor: '#ff7a5c', radiusM: 0.02, speedMps: 900, trailM: 12, lifetimeMs: 90 },
+        'high',
+      ),
     )
     this.lastAmmo.clear()
     this.pendingRemoteTracers.length = 0

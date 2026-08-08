@@ -2,6 +2,7 @@ package sqlite
 
 import (
 	"context"
+	"errors"
 	"path/filepath"
 	"sync"
 	"testing"
@@ -208,5 +209,98 @@ func TestClaimCheckInConcurrentDoesNotDoubleReward(t *testing.T) {
 	}
 	if got.Credits != 2450+100 {
 		t.Fatalf("credits 应为 2550，实际 %d", got.Credits)
+	}
+}
+
+func TestTracerPurchaseIsAtomicAndIdempotent(t *testing.T) {
+	ctx := context.Background()
+	db, err := New(t.TempDir() + "/tracers.db")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	now := time.Now().UTC()
+	u := &store.User{ID: "g_tracer", DisplayName: "tracer-user", Credits: 5000, CreatedAt: now, LastSeenAt: now}
+	if err := db.CreateUser(ctx, u); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := db.PurchaseTracer(ctx, u.ID, "glacier", 3600, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Credits != 1400 {
+		t.Fatalf("credits after purchase = %d, want 1400", got.Credits)
+	}
+
+	got, err = db.PurchaseTracer(ctx, u.ID, "glacier", 3600, now)
+	if err != nil {
+		t.Fatalf("repeat purchase should be idempotent, got %v", err)
+	}
+	if got.Credits != 1400 {
+		t.Fatalf("repeat purchase charged again: credits = %d, want 1400", got.Credits)
+	}
+	if len(got.Owned) != 1 {
+		t.Fatalf("owned = %v, want exactly one entry", got.Owned)
+	}
+
+	if _, err := db.PurchaseTracer(ctx, u.ID, "obsidian", 14000, now); !errors.Is(err, store.ErrInsufficientCredits) {
+		t.Fatalf("err = %v, want ErrInsufficientCredits", err)
+	}
+	after, err := db.GetTracerLoadout(ctx, u.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after.Credits != 1400 {
+		t.Fatalf("failed purchase moved credits to %d, want 1400", after.Credits)
+	}
+	if len(after.Owned) != 1 {
+		t.Fatalf("failed purchase granted the item: %v", after.Owned)
+	}
+}
+
+func TestTracerEquipRequiresOwnershipAndSurvivesReopen(t *testing.T) {
+	ctx := context.Background()
+	path := t.TempDir() + "/equip.db"
+	db, err := New(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC()
+	u := &store.User{ID: "g_equip", DisplayName: "equip-user", Credits: 5000, CreatedAt: now, LastSeenAt: now}
+	if err := db.CreateUser(ctx, u); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := db.EquipTracer(ctx, u.ID, "voltage"); !errors.Is(err, store.ErrNotOwned) {
+		t.Fatalf("err = %v, want ErrNotOwned", err)
+	}
+
+	if _, err := db.PurchaseTracer(ctx, u.ID, "ember", 3600, now); err != nil {
+		t.Fatal(err)
+	}
+	got, err := db.EquipTracer(ctx, u.ID, "ember")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.EquippedID != "ember" {
+		t.Fatalf("equipped = %q, want ember", got.EquippedID)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	reopened, err := New(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reopened.Close()
+	after, err := reopened.GetTracerLoadout(ctx, u.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after.EquippedID != "ember" || len(after.Owned) != 1 || after.Credits != 1400 {
+		t.Fatalf("loadout lost after reopen: %+v", after)
 	}
 }

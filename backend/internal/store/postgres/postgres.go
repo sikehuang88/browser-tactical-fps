@@ -40,4 +40,13 @@ func (s *Store) GetCheckIn(context.Context, string, time.Time) (store.CheckIn, e
 func (s *Store) ClaimCheckIn(context.Context, string, time.Time) (store.CheckIn, error) {
 	return store.CheckIn{}, errors.New("签到 PostgreSQL store 尚未实现")
 }
+func (s *Store) GetTracerLoadout(context.Context, string) (store.TracerLoadout, error) {
+	return store.TracerLoadout{}, errors.New("曳光弹 PostgreSQL store 尚未实现")
+}
+func (s *Store) PurchaseTracer(context.Context, string, string, int32, time.Time) (store.TracerLoadout, error) {
+	return store.TracerLoadout{}, errors.New("曳光弹 PostgreSQL store 尚未实现")
+}
+func (s *Store) EquipTracer(context.Context, string, string) (store.TracerLoadout, error) {
+	return store.TracerLoadout{}, errors.New("曳光弹 PostgreSQL store 尚未实现")
+}
 func (s *Store) Close() error { return nil }

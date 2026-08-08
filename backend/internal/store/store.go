@@ -11,6 +11,12 @@ import (
 // ErrNotFound 资源不存在哨兵错误，各实现统一返回。
 var ErrNotFound = errors.New("资源不存在")
 
+// ErrInsufficientCredits 余额不足以完成购买。
+var ErrInsufficientCredits = errors.New("余额不足")
+
+// ErrNotOwned 尚未拥有该物品，不能装备。
+var ErrNotOwned = errors.New("尚未拥有该物品")
+
 type User struct {
 	ID          string    `json:"id"`
 	DisplayName string    `json:"displayName"`
@@ -51,6 +57,14 @@ type CheckIn struct {
 	NextReward    int32  `json:"nextReward"`
 }
 
+// TracerLoadout 是玩家的曳光弹持有与装备状态。
+// Owned 只含数据库中记录的购买项；免费默认项由服务层按目录补齐。
+type TracerLoadout struct {
+	Owned      []string `json:"owned"`
+	EquippedID string   `json:"equippedId"`
+	Credits    int32    `json:"credits"`
+}
+
 type Store interface {
 	CreateUser(ctx context.Context, u *User) error
 	GetUser(ctx context.Context, id string) (*User, error)
@@ -61,5 +75,12 @@ type Store interface {
 	AdvanceTask(ctx context.Context, userID, taskID string, amount int, now time.Time) error
 	GetCheckIn(ctx context.Context, userID string, now time.Time) (CheckIn, error)
 	ClaimCheckIn(ctx context.Context, userID string, now time.Time) (CheckIn, error)
+	// GetTracerLoadout 读取持有与装备状态；EquippedID 为空表示未选择，由调用方回退到默认项。
+	GetTracerLoadout(ctx context.Context, userID string) (TracerLoadout, error)
+	// PurchaseTracer 扣费并授予物品。price 由服务层从权威目录解析，绝不来自请求体。
+	// 实现必须幂等：已拥有时直接返回当前状态且不重复扣费。
+	PurchaseTracer(ctx context.Context, userID, itemID string, price int32, now time.Time) (TracerLoadout, error)
+	// EquipTracer 装备已拥有的物品；未拥有返回 ErrNotOwned。
+	EquipTracer(ctx context.Context, userID, itemID string) (TracerLoadout, error)
 	Close() error
 }

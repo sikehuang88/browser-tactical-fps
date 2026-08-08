@@ -20,13 +20,15 @@ type Store struct {
 		date   string
 		streak int
 	}
+	tracers  map[string]map[string]time.Time
+	equipped map[string]string
 }
 
 func New() *Store {
 	return &Store{users: make(map[string]*store.User), tasks: make(map[string]map[string]store.Task), checkins: make(map[string]struct {
 		date   string
 		streak int
-	})}
+	}), tracers: make(map[string]map[string]time.Time), equipped: make(map[string]string)}
 }
 
 func (s *Store) CreateUser(_ context.Context, u *store.User) error {
@@ -214,6 +216,63 @@ func (s *Store) ensureTasksLocked(userID string, now time.Time) map[string]store
 	}
 	s.tasks[userID] = tasks
 	return tasks
+}
+
+// ---------- 曳光弹（cosmetics） ----------
+
+func (s *Store) GetTracerLoadout(_ context.Context, userID string) (store.TracerLoadout, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.loadoutLocked(userID)
+}
+
+func (s *Store) PurchaseTracer(_ context.Context, userID, itemID string, price int32, now time.Time) (store.TracerLoadout, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	u, ok := s.users[userID]
+	if !ok {
+		return store.TracerLoadout{}, store.ErrNotFound
+	}
+	owned := s.tracers[userID]
+	if owned == nil {
+		owned = make(map[string]time.Time)
+		s.tracers[userID] = owned
+	}
+	// 幂等：已拥有时不重复扣费。
+	if _, has := owned[itemID]; !has {
+		if u.Credits < price {
+			return store.TracerLoadout{}, store.ErrInsufficientCredits
+		}
+		u.Credits -= price
+		owned[itemID] = now.UTC()
+	}
+	return s.loadoutLocked(userID)
+}
+
+func (s *Store) EquipTracer(_ context.Context, userID, itemID string) (store.TracerLoadout, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, ok := s.users[userID]; !ok {
+		return store.TracerLoadout{}, store.ErrNotFound
+	}
+	if _, has := s.tracers[userID][itemID]; !has {
+		return store.TracerLoadout{}, store.ErrNotOwned
+	}
+	s.equipped[userID] = itemID
+	return s.loadoutLocked(userID)
+}
+
+func (s *Store) loadoutLocked(userID string) (store.TracerLoadout, error) {
+	u, ok := s.users[userID]
+	if !ok {
+		return store.TracerLoadout{}, store.ErrNotFound
+	}
+	owned := make([]string, 0, len(s.tracers[userID]))
+	for id := range s.tracers[userID] {
+		owned = append(owned, id)
+	}
+	sort.Strings(owned)
+	return store.TracerLoadout{Owned: owned, EquippedID: s.equipped[userID], Credits: u.Credits}, nil
 }
 
 func (s *Store) Close() error { return nil }
