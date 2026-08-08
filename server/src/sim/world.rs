@@ -148,7 +148,16 @@ impl World {
 
     pub fn set_rtt(&mut self, id: u32, rtt_ms: u32) {
         if let Some(p) = self.players.get_mut(&id) {
-            p.set_rtt(rtt_ms);
+            // 使用客户端同钟测量的 RTT（无跨机时钟偏差），但拒绝与历史值突变的
+            // 上报，防止伪造“高延迟”获得更大回溯窗口。上限 200ms。
+            let clamped = rtt_ms.min(200);
+            let trusted = if p.last_trusted_rtt == 0 || clamped.abs_diff(p.last_trusted_rtt) <= 60 {
+                clamped
+            } else {
+                p.last_trusted_rtt
+            };
+            p.set_rtt(trusted);
+            p.last_trusted_rtt = trusted;
         }
     }
 

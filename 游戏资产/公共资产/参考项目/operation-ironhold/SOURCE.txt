@@ -1,4 +1,0 @@
-Source: https://github.com/StarKnightt/operation-ironhold
-License: MIT
-Purpose: reference only; no external binary assets included. Review upstream LICENSE before copying code.
-Downloaded: 2026-08-07

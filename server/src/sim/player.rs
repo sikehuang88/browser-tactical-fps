@@ -49,6 +49,8 @@ pub struct Player {
     /// 投掷物库存 [烟雾, 闪光, 高爆]。
     pub grenades: [u32; 3],
     pub rtt_ms: u32,
+    /// 上一个通过合理性校验的 RTT（防客户端突变伪造）。
+    pub last_trusted_rtt: u32,
     move_speed: f32,
     reload_remaining_ticks: u32,
     pub next_fire_tick: u64,
@@ -91,6 +93,7 @@ impl Player {
             money: super::weapon::START_MONEY,
             grenades: [0; 3],
             rtt_ms: 0,
+            last_trusted_rtt: 0,
             move_speed: 0.0,
             reload_remaining_ticks: 0,
             next_fire_tick: 0,

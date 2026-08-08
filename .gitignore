@@ -7,6 +7,10 @@ dist/
 # Rust / server
 server/target/
 client/src-tauri/target/
+client/src-tauri/gen/
+
+# 本地原始美术素材（不在仓库分发，运行时资产在 client/public/）
+游戏资产/
 
 # Go / backend
 backend/bin/

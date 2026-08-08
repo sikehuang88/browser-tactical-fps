@@ -1,4 +1,0 @@
-Source: https://kenney.nl/assets/survival-kit
-Download: https://kenney.nl/media/pages/assets/survival-kit/4065a8185b-1712149243/kenney_survival-kit.zip
-License: CC0 1.0 Universal (Kenney assets). Verify the included license/readme before redistribution.
-Downloaded: 2026-08-07

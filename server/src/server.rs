@@ -45,6 +45,7 @@ pub enum InboundMsg {
     Ping {
         player_id: u32,
         client_sent_at_ms: u32,
+        measured_rtt_ms: u32,
     },
     Buy {
         player_id: u32,
@@ -231,11 +232,11 @@ fn handle_inbound(
         InboundMsg::Ping {
             player_id,
             client_sent_at_ms,
+            measured_rtt_ms,
         } => {
             let now = now_ms();
-            // 服务器用自身时钟测量 RTT，不信任客户端上报值（防伪造 200ms 回溯）。
-            let rtt = now.wrapping_sub(client_sent_at_ms).min(200);
-            world.set_rtt(player_id, rtt);
+            // RTT 采用客户端同钟实测值（见 world.set_rtt 的突变校验）。
+            world.set_rtt(player_id, measured_rtt_ms);
             if let Some(tx) = players.get(&player_id) {
                 let bytes =
                     encode_envelope(MSG_PONG, 0, &encode_pong(client_sent_at_ms, now), true);
@@ -381,11 +382,12 @@ pub async fn handle_connection(
                         Err(e) => log::warn!("输入帧解码失败: {e}"),
                     },
                     MSG_PING => {
-                        let (ts, _measured_rtt_ms) = decode_ping(&env.payload);
+                        let (ts, measured_rtt_ms) = decode_ping(&env.payload);
                         if inbound
                             .send(InboundMsg::Ping {
                                 player_id,
                                 client_sent_at_ms: ts,
+                                measured_rtt_ms,
                             })
                             .await
                             .is_err()

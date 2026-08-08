@@ -20,10 +20,16 @@ import (
 func main() {
 	addr := flag.String("addr", ":8080", "监听地址")
 	dbPath := flag.String("db", "data/fpsweb.db", "SQLite 数据库文件路径")
+	pgDSN := flag.String("pg-dsn", "", "PostgreSQL DSN（当前尚未实现，留空使用 SQLite）")
 	tokenSecret := flag.String("token-secret", "", "令牌签名密钥（留空自动生成随机密钥）")
 	flag.Parse()
 
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
+
+	if *pgDSN != "" {
+		logger.Error("--pg-dsn 指定的 PostgreSQL store 尚未实现，请先使用 SQLite（--db）")
+		os.Exit(1)
+	}
 
 	var st store.Store
 	if db, err := sqlite.New(*dbPath); err == nil {

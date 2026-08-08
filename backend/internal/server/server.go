@@ -5,6 +5,8 @@ package server
 import (
 	"log/slog"
 	"net/http"
+	"os"
+	"strings"
 	"time"
 
 	"github.com/fpsweb/game/backend/internal/auth"
@@ -34,17 +36,37 @@ func New(deps Deps) *Server {
 		deps.Logger = slog.Default()
 	}
 	return &Server{
-		deps:    deps,
-		limiter: newRateLimiter(120, time.Minute),
-		allowedOrigins: map[string]bool{
-			"http://localhost:5173":  true,
-			"http://127.0.0.1:5173":  true,
-			"http://localhost:5174":  true,
-			"http://127.0.0.1:5174":  true,
-			"http://tauri.localhost": true,
-			"tauri://localhost":      true,
-		},
+		deps:           deps,
+		limiter:        newRateLimiter(120, time.Minute),
+		allowedOrigins: allowedOriginsFromEnv(),
 	}
+}
+
+// allowedOriginsFromEnv 读取 FPSWEB_ALLOWED_ORIGINS（逗号分隔），未配置时使用本地开发白名单。
+func allowedOriginsFromEnv() map[string]bool {
+	defaults := map[string]bool{
+		"http://localhost:5173":  true,
+		"http://127.0.0.1:5173":  true,
+		"http://localhost:5174":  true,
+		"http://127.0.0.1:5174":  true,
+		"http://tauri.localhost": true,
+		"tauri://localhost":      true,
+	}
+	raw := strings.TrimSpace(os.Getenv("FPSWEB_ALLOWED_ORIGINS"))
+	if raw == "" {
+		return defaults
+	}
+	result := make(map[string]bool)
+	for _, part := range strings.Split(raw, ",") {
+		part = strings.TrimSpace(part)
+		if part != "" {
+			result[part] = true
+		}
+	}
+	if len(result) == 0 {
+		return defaults
+	}
+	return result
 }
 
 func (s *Server) Handler() http.Handler {

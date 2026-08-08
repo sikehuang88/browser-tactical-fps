@@ -33,6 +33,8 @@ func New(path string) (*Store, error) {
 	if err != nil {
 		return nil, fmt.Errorf("open sqlite: %w", err)
 	}
+	// SQLite 单写者：写事务天然串行化，单连接避免锁竞争；
+	// 读并发通过 WAL + busy_timeout 缓解。
 	db.SetMaxOpenConns(1)
 	s := &Store{db: db}
 	if err := s.init(); err != nil {
@@ -45,6 +47,8 @@ func New(path string) (*Store, error) {
 func (s *Store) init() error {
 	_, err := s.db.Exec(`
 PRAGMA foreign_keys = ON;
+PRAGMA journal_mode = WAL;
+PRAGMA busy_timeout = 5000;
 CREATE TABLE IF NOT EXISTS users (
  id TEXT PRIMARY KEY, display_name TEXT NOT NULL, region TEXT NOT NULL DEFAULT 'cn',
  language TEXT NOT NULL DEFAULT 'zh-CN', level INTEGER NOT NULL DEFAULT 1,
@@ -279,8 +283,24 @@ func (s *Store) ClaimCheckIn(ctx context.Context, userID string, now time.Time) 
 		streak = 1
 	}
 	reward := checkInReward(streak)
-	if _, err = tx.ExecContext(ctx, `INSERT INTO user_checkins(user_id,last_date,streak,updated_at) VALUES(?,?,?,?) ON CONFLICT(user_id) DO UPDATE SET last_date=excluded.last_date,streak=excluded.streak,updated_at=excluded.updated_at`, userID, today, streak, stamp(now.UTC())); err != nil {
+	// 条件更新：只有“今天尚未签到”才真正写入并发奖，数据库层保证幂等，
+	// 不依赖连接池串行化（PostgreSQL 迁移后同样安全）。
+	result, err := tx.ExecContext(ctx, `INSERT INTO user_checkins(user_id,last_date,streak,updated_at) VALUES(?,?,?,?)
+		ON CONFLICT(user_id) DO UPDATE SET last_date=excluded.last_date,streak=excluded.streak,updated_at=excluded.updated_at
+		WHERE user_checkins.last_date <> excluded.last_date`, userID, today, streak, stamp(now.UTC()))
+	if err != nil {
 		return store.CheckIn{}, err
+	}
+	n, err := result.RowsAffected()
+	if err != nil {
+		return store.CheckIn{}, err
+	}
+	if n == 0 {
+		// 并发下已被其他请求签到，不再发奖。
+		if err := tx.Commit(); err != nil {
+			return store.CheckIn{}, err
+		}
+		return store.CheckIn{CheckedIn: true, Date: today, CurrentStreak: streak, Reward: 0, Credits: u.Credits, NextReward: checkInReward(streak + 1)}, nil
 	}
 	if _, err = tx.ExecContext(ctx, `UPDATE users SET credits=MIN(16000,credits+?),last_seen_at=? WHERE id=?`, reward, stamp(now.UTC()), userID); err != nil {
 		return store.CheckIn{}, err

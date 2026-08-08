@@ -1,5 +1,0 @@
-Source: https://github.com/Mohamed3042/polyblast-arena
-Repository: Mohamed3042/polyblast-arena
-Downloaded: 2026-08-07
-License status: No explicit open-source license detected in the repository metadata at download time. Treat assets and source as reference-only until the author grants permission.
-Contents include GLB models and Blender asset generation scripts.

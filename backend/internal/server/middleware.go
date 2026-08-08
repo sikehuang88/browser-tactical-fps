@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"math"
 	"net"
 	"net/http"
 	"sync"
@@ -97,28 +98,47 @@ func (s *Server) requireAuth(next http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
-// rateLimiter 固定窗口限频（SEC-001 频率限制的骨架实现）。
+// rateLimiter 每 IP 令牌桶限频（SEC-001：平滑突发，无固定窗口边界放大）。
 type rateLimiter struct {
-	mu     sync.Mutex
-	limit  int
-	window time.Duration
-	hits   map[string]int
-	start  time.Time
+	mu      sync.Mutex
+	limit   float64
+	refill  float64
+	buckets map[string]*tokenBucket
+}
+
+type tokenBucket struct {
+	tokens float64
+	last   time.Time
 }
 
 func newRateLimiter(limit int, window time.Duration) *rateLimiter {
-	return &rateLimiter{limit: limit, window: window, hits: make(map[string]int), start: time.Now()}
+	return &rateLimiter{
+		limit:   float64(limit),
+		refill:  float64(limit) / window.Seconds(),
+		buckets: make(map[string]*tokenBucket),
+	}
 }
 
 func (rl *rateLimiter) allow(ip string) bool {
 	rl.mu.Lock()
 	defer rl.mu.Unlock()
-	if time.Since(rl.start) > rl.window {
-		rl.hits = make(map[string]int)
-		rl.start = time.Now()
+	now := time.Now()
+	bucket, ok := rl.buckets[ip]
+	if !ok {
+		bucket = &tokenBucket{tokens: rl.limit, last: now}
+		rl.buckets[ip] = bucket
 	}
-	rl.hits[ip]++
-	return rl.hits[ip] <= rl.limit
+	bucket.tokens = math.Min(rl.limit, bucket.tokens+now.Sub(bucket.last).Seconds()*rl.refill)
+	bucket.last = now
+	if bucket.tokens < 1 {
+		return false
+	}
+	bucket.tokens--
+	// 简单防内存膨胀：异常大的 IP 集合直接重置。
+	if len(rl.buckets) > 10000 {
+		rl.buckets = make(map[string]*tokenBucket)
+	}
+	return true
 }
 
 func newRequestID() string {

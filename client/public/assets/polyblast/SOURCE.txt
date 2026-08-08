@@ -1,4 +1,0 @@
-Source: https://github.com/Mohamed3042/polyblast-arena
-Commit: main branch downloaded 2026-08-07
-License: No explicit open-source license detected. These files are integrated for local development/reference only; obtain author permission before commercial redistribution.
-Original asset paths: assets/models/weapons, assets/models/env/industrial, assets/models/characters

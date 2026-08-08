@@ -110,7 +110,9 @@ func (s *Server) handleClaimTask(w http.ResponseWriter, r *http.Request) {
 	taskID := r.PathValue("taskID")
 	task, err := s.deps.Store.ClaimTask(r.Context(), userIDFrom(r), taskID, time.Now())
 	if err != nil {
-		writeError(w, http.StatusConflict, "task_not_ready", err.Error(), requestIDFrom(r))
+		reqID := requestIDFrom(r)
+		s.deps.Logger.Error("claim task failed", "err", err, "requestId", reqID, "userId", userIDFrom(r))
+		writeError(w, http.StatusConflict, "task_not_ready", "任务尚未完成、已过期或已领取", reqID)
 		return
 	}
 	s.audit(r, "task_claim", userIDFrom(r))
