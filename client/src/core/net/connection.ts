@@ -44,8 +44,8 @@ export type ServerEvent =
   | { type: 'matchEnd'; winner: number; attackScore: number; defendScore: number; reason: number }
   | { type: 'damage'; victimId: number; damage: number; victimHealth: number }
   | { type: 'economy'; economy: EconomyMsg }
-  | { type: 'grenadeSpawn'; kind: number; ownerId: number; pos: Vec3; vel: Vec3 }
-  | { type: 'grenadeExplode'; kind: number; pos: Vec3 }
+  | { type: 'grenadeSpawn'; id: number; kind: number; ownerId: number; pos: Vec3; vel: Vec3 }
+  | { type: 'grenadeExplode'; id: number; kind: number; pos: Vec3 }
   | { type: 'flash'; strength: number }
   | { type: 'closed'; code: number; reason: string }
 
@@ -59,6 +59,7 @@ export class GameConnection {
   private closed = false
   connected = false
   playerId = 0
+  private measuredRttMs = 0
 
   constructor(
     transport: Transport,
@@ -108,7 +109,7 @@ export class GameConnection {
   }
 
   sendPing(): void {
-    this.send(MSG.PING, 0, encodePing(Math.round(performance.now())), true)
+    this.send(MSG.PING, 0, encodePing(Math.round(Date.now()), this.measuredRttMs), true)
   }
 
   /** 发送购买/退款请求（item_id 见 codec.ITEM 或协议文档）。 */
@@ -118,7 +119,7 @@ export class GameConnection {
 
   /** 每帧由对局逻辑调用并消费事件队列。 */
   drainEvents(): ServerEvent[] {
-    const out = this.events
+    const out = [...this.events]
     this.events.length = 0
     return out
   }
@@ -143,6 +144,7 @@ export class GameConnection {
         break
       case MSG.PONG: {
         const p = decodePong(env.payload)
+        this.measuredRttMs = Math.max(0, Math.min(1000, Math.round(Date.now() - p.clientSentAtMs)))
         this.queue({ type: 'pong', clientSentAtMs: p.clientSentAtMs, serverRecvAtMs: p.serverRecvAtMs })
         break
       }
@@ -200,12 +202,12 @@ export class GameConnection {
       }
       case MSG.GRENADE_SPAWN: {
         const g = decodeGrenadeSpawn(env.payload)
-        this.queue({ type: 'grenadeSpawn', kind: g.kind, ownerId: g.ownerId, pos: g.pos, vel: g.vel })
+        this.queue({ type: 'grenadeSpawn', id: g.id, kind: g.kind, ownerId: g.ownerId, pos: g.pos, vel: g.vel })
         break
       }
       case MSG.GRENADE_EXPLODE: {
         const g = decodeGrenadeExplode(env.payload)
-        this.queue({ type: 'grenadeExplode', kind: g.kind, pos: g.pos })
+        this.queue({ type: 'grenadeExplode', id: g.id, kind: g.kind, pos: g.pos })
         break
       }
       case MSG.FLASH: {

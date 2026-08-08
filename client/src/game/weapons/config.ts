@@ -1,7 +1,7 @@
 // 武器配置（版本化）。M0 提供首发武器子集的数值定义，服务端权威版本见 proto game.proto。
 // 数值为占位原型，最终由策划配置表驱动（WEAPON-001）。
 
-export type WeaponCategory = 'pistol' | 'smg' | 'rifle' | 'sniper' | 'shotgun'
+export type WeaponCategory = 'pistol' | 'smg' | 'rifle' | 'sniper' | 'shotgun' | 'melee'
 
 export interface WeaponConfig {
   id: number
@@ -16,6 +16,7 @@ export interface WeaponConfig {
   automatic: boolean
   penetrationPower: number // 0..100
   armorDamageRatio: number // 千分比
+  maxRangeM: number
 }
 
 export const WEAPONS: WeaponConfig[] = [
@@ -32,6 +33,7 @@ export const WEAPONS: WeaponConfig[] = [
     automatic: true,
     penetrationPower: 70,
     armorDamageRatio: 770,
+    maxRangeM: 80,
   },
   {
     id: 2,
@@ -46,6 +48,7 @@ export const WEAPONS: WeaponConfig[] = [
     automatic: false,
     penetrationPower: 35,
     armorDamageRatio: 650,
+    maxRangeM: 50,
   },
   {
     id: 3,
@@ -60,6 +63,7 @@ export const WEAPONS: WeaponConfig[] = [
     automatic: true,
     penetrationPower: 40,
     armorDamageRatio: 700,
+    maxRangeM: 40,
   },
   {
     id: 4,
@@ -74,6 +78,52 @@ export const WEAPONS: WeaponConfig[] = [
     automatic: false,
     penetrationPower: 90,
     armorDamageRatio: 900,
+    maxRangeM: 120,
+  },
+  {
+    id: 5,
+    name: 'tactical_knife',
+    displayName: '战术刀',
+    category: 'melee',
+    damage: 55,
+    fireRatePerMin: 75,
+    ammo: 0,
+    reserve: 0,
+    reloadMs: 0,
+    automatic: false,
+    penetrationPower: 0,
+    armorDamageRatio: 1000,
+    maxRangeM: 2.2,
+  },
+  {
+    id: 6,
+    name: 'm4_pink',
+    displayName: 'M4 粉色',
+    category: 'rifle',
+    damage: 34,
+    fireRatePerMin: 720,
+    ammo: 30,
+    reserve: 90,
+    reloadMs: 2100,
+    automatic: true,
+    penetrationPower: 72,
+    armorDamageRatio: 780,
+    maxRangeM: 82,
+  },
+  {
+    id: 7,
+    name: 'laser_cannon',
+    displayName: '激光炮',
+    category: 'rifle',
+    damage: 48,
+    fireRatePerMin: 180,
+    ammo: 10,
+    reserve: 40,
+    reloadMs: 2800,
+    automatic: false,
+    penetrationPower: 95,
+    armorDamageRatio: 900,
+    maxRangeM: 120,
   },
 ]
 

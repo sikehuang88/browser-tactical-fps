@@ -6,6 +6,7 @@ export class EntityStore {
   private readonly map = new Map<number, EntitySnapshot>()
 
   apply(entities: EntitySnapshot[]): void {
+    this.map.clear()
     for (const e of entities) this.map.set(e.id, e)
   }
 

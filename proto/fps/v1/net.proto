@@ -36,6 +36,9 @@ message InputButtons {
   bool attack = 8;
   bool use = 9;         // 安装/拆除/拾取
   bool reload = 10;
+  bool equip_firearm = 11;
+  bool equip_knife = 12;
+  bool equip_secondary = 13;
 }
 
 // C→S 输入帧（高频不可靠通道）。
@@ -64,11 +67,15 @@ message EntitySnapshot {
   bool crouching = 6;
   int32 health = 7;
   int32 weapon_id = 8;    // 0 = 无
+  uint32 ammo = 9;
+  bool reloading = 10;
+  bool sprinting = 11;
 }
 
 // C→S / S→C RTT 探针。
 message Ping {
   uint32 client_sent_at_ms = 1;
+  uint32 measured_rtt_ms = 2; // 上一次 Ping/Pong 往返的客户端实测值
 }
 
 message Pong {
@@ -166,16 +173,18 @@ enum GrenadeType {
 
 // S→C 投掷物生成（客户端据此渲染飞行轨迹，WEAPON-005）。
 message GrenadeSpawn {
-  GrenadeType type = 1;
-  uint32 owner_id = 2;
-  Vec3 position = 3;
-  Vec3 velocity = 4; // 厘米/秒
+  uint32 grenade_id = 1;
+  GrenadeType type = 2;
+  uint32 owner_id = 3;
+  Vec3 position = 4;
+  Vec3 velocity = 5; // 厘米/秒
 }
 
 // S→C 爆炸/生效。
 message GrenadeExplode {
-  GrenadeType type = 1;
-  Vec3 position = 2;
+  uint32 grenade_id = 1;
+  GrenadeType type = 2;
+  Vec3 position = 3;
 }
 
 // S→C 致盲（仅发给被闪玩家）。

@@ -3,7 +3,7 @@
 
 import type { EntitySnapshot, InputFrame, Vec3 } from '../types'
 
-export const PROTOCOL_VERSION = 0x01
+export const PROTOCOL_VERSION = 0x02
 const MAGIC = 0xf5
 
 export const MSG = {
@@ -126,6 +126,8 @@ export function decodeSnapshot(payload: Uint8Array): { tick: number; entities: E
     const pitch = dv.getInt16(off); off += 2
     const health = dv.getInt16(off); off += 2
     const team = dv.getUint8(off); off += 1
+    const weaponId = dv.getUint8(off); off += 1
+    const ammo = dv.getUint8(off); off += 1
     entities.push({
       id,
       position: { x: x / 100, y: y / 100, z: z / 100 },
@@ -133,8 +135,11 @@ export function decodeSnapshot(payload: Uint8Array): { tick: number; entities: E
       pitch: pitch / 100,
       moving: (flags & 1) !== 0,
       crouching: (flags & 2) !== 0,
+      sprinting: (flags & 8) !== 0,
       health,
-      weaponId: 0,
+      weaponId,
+      ammo,
+      reloading: (flags & 4) !== 0,
       team,
     })
   }
@@ -143,9 +148,11 @@ export function decodeSnapshot(payload: Uint8Array): { tick: number; entities: E
 
 // ---------- Ping / Pong / Kick ----------
 
-export function encodePing(clientSentAtMs: number): Uint8Array {
-  const out = new Uint8Array(4)
-  new DataView(out.buffer).setUint32(0, clientSentAtMs >>> 0)
+export function encodePing(clientSentAtMs: number, measuredRttMs = 0): Uint8Array {
+  const out = new Uint8Array(8)
+  const dv = new DataView(out.buffer)
+  dv.setUint32(0, clientSentAtMs >>> 0)
+  dv.setUint32(4, measuredRttMs >>> 0)
   return out
 }
 
@@ -178,12 +185,12 @@ export function decodeRoundState(payload: Uint8Array): RoundStateMsg {
   return {
     phase: dv.getUint8(0),
     round: dv.getUint8(1),
-    timeMs: dv.getUint16(2),
-    attackScore: dv.getUint8(4),
-    defendScore: dv.getUint8(5),
-    bomb: dv.getUint8(6),
-    bombSite: dv.getUint8(7),
-    winner: dv.getUint8(8),
+    timeMs: dv.getUint32(2),
+    attackScore: dv.getUint8(6),
+    defendScore: dv.getUint8(7),
+    bomb: dv.getUint8(8),
+    bombSite: dv.getUint8(9),
+    winner: dv.getUint8(10),
   }
 }
 
@@ -268,6 +275,7 @@ export function decodeEconomy(payload: Uint8Array): EconomyMsg {
 }
 
 export interface GrenadeSpawnMsg {
+  id: number
   kind: number // 1=smoke 2=flash 3=he
   ownerId: number
   pos: Vec3 // 米
@@ -277,17 +285,19 @@ export interface GrenadeSpawnMsg {
 export function decodeGrenadeSpawn(payload: Uint8Array): GrenadeSpawnMsg {
   const dv = new DataView(payload.buffer, payload.byteOffset, payload.byteLength)
   let off = 0
+  const id = dv.getUint32(off); off += 4
   const kind = dv.getUint8(off); off += 1
-  const ownerId = dv.getUint8(off); off += 1
+  const ownerId = dv.getUint32(off); off += 4
   const readVec = () => {
     const v = { x: dv.getInt16(off) / 100, y: dv.getInt16(off + 2) / 100, z: dv.getInt16(off + 4) / 100 }
     off += 6
     return v
   }
-  return { kind, ownerId, pos: readVec(), vel: readVec() }
+  return { id, kind, ownerId, pos: readVec(), vel: readVec() }
 }
 
 export interface GrenadeExplodeMsg {
+  id: number
   kind: number
   pos: Vec3
 }
@@ -295,8 +305,9 @@ export interface GrenadeExplodeMsg {
 export function decodeGrenadeExplode(payload: Uint8Array): GrenadeExplodeMsg {
   const dv = new DataView(payload.buffer, payload.byteOffset, payload.byteLength)
   return {
-    kind: dv.getUint8(0),
-    pos: { x: dv.getInt16(1) / 100, y: dv.getInt16(3) / 100, z: dv.getInt16(5) / 100 },
+    id: dv.getUint32(0),
+    kind: dv.getUint8(4),
+    pos: { x: dv.getInt16(5) / 100, y: dv.getInt16(7) / 100, z: dv.getInt16(9) / 100 },
   }
 }
 

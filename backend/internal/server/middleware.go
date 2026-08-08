@@ -30,6 +30,11 @@ func (r *statusRecorder) WriteHeader(code int) {
 
 func (s *Server) middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		s.applyCORS(w, r)
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
 		requestID := newRequestID()
 		w.Header().Set("X-Request-Id", requestID)
 		ctx := context.WithValue(r.Context(), ctxKeyRequestID, requestID)
@@ -60,6 +65,17 @@ func (s *Server) middleware(next http.Handler) http.Handler {
 			"ip", clientIP(r),
 		)
 	})
+}
+
+// applyCORS 仅放行已知前端来源，避免任意站点跨域读取业务 API。
+func (s *Server) applyCORS(w http.ResponseWriter, r *http.Request) {
+	origin := r.Header.Get("Origin")
+	if origin != "" && s.allowedOrigins[origin] {
+		w.Header().Set("Access-Control-Allow-Origin", origin)
+		w.Header().Add("Vary", "Origin")
+	}
+	w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
+	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
 }
 
 // requireAuth 校验 Bearer 访问令牌并注入 userID。

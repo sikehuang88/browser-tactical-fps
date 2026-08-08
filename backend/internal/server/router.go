@@ -26,7 +26,7 @@ func (s *Server) handleGuestLogin(w http.ResponseWriter, r *http.Request) {
 		DeviceID string `json:"deviceId"`
 		Language string `json:"language"`
 	}
-	if err := readJSON(r, &body); err != nil {
+	if err := readJSON(w, r, &body); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid_request", "请求体无效", reqID)
 		return
 	}
@@ -64,10 +64,63 @@ func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, u)
 }
 
+func (s *Server) handleTasks(w http.ResponseWriter, r *http.Request) {
+	tasks, err := s.deps.Store.ListTasks(r.Context(), userIDFrom(r), time.Now())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "tasks_unavailable", "任务服务不可用", requestIDFrom(r))
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"tasks": tasks})
+}
+
+func (s *Server) handleCheckIn(w http.ResponseWriter, r *http.Request) {
+	checkIn, err := s.deps.Store.GetCheckIn(r.Context(), userIDFrom(r), time.Now().UTC())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "checkin_unavailable", "签到服务不可用", requestIDFrom(r))
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"checkIn": checkIn})
+}
+
+func (s *Server) handleClaimCheckIn(w http.ResponseWriter, r *http.Request) {
+	checkIn, err := s.deps.Store.ClaimCheckIn(r.Context(), userIDFrom(r), time.Now().UTC())
+	if err != nil {
+		writeError(w, http.StatusConflict, "checkin_failed", "签到失败", requestIDFrom(r))
+		return
+	}
+	s.audit(r, "daily_checkin", userIDFrom(r))
+	writeJSON(w, http.StatusOK, map[string]any{"checkIn": checkIn})
+}
+
+func (s *Server) handleTrackTask(w http.ResponseWriter, r *http.Request) {
+	taskID := r.PathValue("taskID")
+	if taskID == "" || len(taskID) > 64 {
+		writeError(w, http.StatusBadRequest, "invalid_task", "任务编号无效", requestIDFrom(r))
+		return
+	}
+	if err := s.deps.Store.TrackTask(r.Context(), userIDFrom(r), taskID); err != nil {
+		writeError(w, http.StatusBadRequest, "task_not_found", "任务不存在", requestIDFrom(r))
+		return
+	}
+	s.audit(r, "task_track", userIDFrom(r))
+	s.handleTasks(w, r)
+}
+
+func (s *Server) handleClaimTask(w http.ResponseWriter, r *http.Request) {
+	taskID := r.PathValue("taskID")
+	task, err := s.deps.Store.ClaimTask(r.Context(), userIDFrom(r), taskID, time.Now())
+	if err != nil {
+		writeError(w, http.StatusConflict, "task_not_ready", err.Error(), requestIDFrom(r))
+		return
+	}
+	s.audit(r, "task_claim", userIDFrom(r))
+	writeJSON(w, http.StatusOK, map[string]any{"task": task})
+}
+
 func (s *Server) handleMatchmakingQueue(w http.ResponseWriter, r *http.Request) {
 	reqID := requestIDFrom(r)
 	var body matchmaking.Request
-	if err := readJSON(r, &body); err != nil {
+	if err := readJSON(w, r, &body); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid_request", "请求体无效", reqID)
 		return
 	}
@@ -101,8 +154,8 @@ func (s *Server) audit(r *http.Request, action, userID string) {
 
 // ---------- helpers ----------
 
-func readJSON(r *http.Request, v any) error {
-	r.Body = http.MaxBytesReader(nil, r.Body, 64<<10) // 64KB
+func readJSON(w http.ResponseWriter, r *http.Request, v any) error {
+	r.Body = http.MaxBytesReader(w, r.Body, 64<<10) // 64KB
 	dec := json.NewDecoder(r.Body)
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(v); err != nil {

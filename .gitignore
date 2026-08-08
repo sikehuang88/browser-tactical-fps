@@ -6,6 +6,7 @@ dist/
 
 # Rust / server
 server/target/
+client/src-tauri/target/
 
 # Go / backend
 backend/bin/

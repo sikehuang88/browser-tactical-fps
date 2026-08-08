@@ -24,8 +24,9 @@ type Deps struct {
 }
 
 type Server struct {
-	deps    Deps
-	limiter *rateLimiter
+	deps           Deps
+	limiter        *rateLimiter
+	allowedOrigins map[string]bool
 }
 
 func New(deps Deps) *Server {
@@ -35,6 +36,14 @@ func New(deps Deps) *Server {
 	return &Server{
 		deps:    deps,
 		limiter: newRateLimiter(120, time.Minute),
+		allowedOrigins: map[string]bool{
+			"http://localhost:5173":  true,
+			"http://127.0.0.1:5173":  true,
+			"http://localhost:5174":  true,
+			"http://127.0.0.1:5174":  true,
+			"http://tauri.localhost": true,
+			"tauri://localhost":      true,
+		},
 	}
 }
 
@@ -44,6 +53,11 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/v1/config", s.handleConfig)
 	mux.HandleFunc("POST /api/v1/auth/guest", s.handleGuestLogin)
 	mux.HandleFunc("GET /api/v1/me", s.requireAuth(s.handleMe))
+	mux.HandleFunc("GET /api/v1/tasks", s.requireAuth(s.handleTasks))
+	mux.HandleFunc("GET /api/v1/checkin", s.requireAuth(s.handleCheckIn))
+	mux.HandleFunc("POST /api/v1/checkin", s.requireAuth(s.handleClaimCheckIn))
+	mux.HandleFunc("POST /api/v1/tasks/{taskID}/track", s.requireAuth(s.handleTrackTask))
+	mux.HandleFunc("POST /api/v1/tasks/{taskID}/claim", s.requireAuth(s.handleClaimTask))
 	mux.HandleFunc("POST /api/v1/matchmaking/queue", s.requireAuth(s.handleMatchmakingQueue))
 	mux.HandleFunc("DELETE /api/v1/matchmaking/queue", s.requireAuth(s.handleMatchmakingCancel))
 	return s.middleware(mux)

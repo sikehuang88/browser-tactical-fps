@@ -10,6 +10,7 @@ use super::weapon::WeaponSpec;
 pub const EYE_STAND: f32 = 1.6;
 pub const EYE_CROUCH: f32 = 1.2;
 pub const STAND_HEIGHT: f32 = 1.8;
+pub const CROUCH_HEIGHT: f32 = 1.35;
 pub const HIT_RADIUS: f32 = 0.4;
 /// 延迟补偿回溯窗口（≤200ms，64 tick 下 13 tick）。
 pub const MAX_LOOKBACK_TICKS: u64 = 13;
@@ -100,12 +101,7 @@ fn dot(a: [f32; 3], b: [f32; 3]) -> f32 {
 }
 
 /// 射线-线段最近距离：返回 (距离², 线段参数 s∈[0,1], 射线参数 t)。
-fn ray_segment(
-    origin: [f32; 3],
-    dir: [f32; 3],
-    a: [f32; 3],
-    b: [f32; 3],
-) -> (f32, f32, f32) {
+fn ray_segment(origin: [f32; 3], dir: [f32; 3], a: [f32; 3], b: [f32; 3]) -> (f32, f32, f32) {
     let d1 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
     let (aa, bb, cc, dd, ee) = (
         dot(d1, d1),
@@ -115,10 +111,22 @@ fn ray_segment(
         dot(dir, [a[0] - origin[0], a[1] - origin[1], a[2] - origin[2]]),
     );
     let denom = aa * cc - bb * bb;
-    let mut s = if denom.abs() < 1e-8 { 0.0 } else { (bb * ee - cc * dd) / denom };
+    let mut s = if denom.abs() < 1e-8 {
+        0.0
+    } else {
+        (bb * ee - cc * dd) / denom
+    };
     s = s.clamp(0.0, 1.0);
-    let t = if cc > 1e-8 { ((bb * s + ee) / cc).max(0.0) } else { 0.0 };
-    let p = [origin[0] + dir[0] * t, origin[1] + dir[1] * t, origin[2] + dir[2] * t];
+    let t = if cc > 1e-8 {
+        ((bb * s + ee) / cc).max(0.0)
+    } else {
+        0.0
+    };
+    let p = [
+        origin[0] + dir[0] * t,
+        origin[1] + dir[1] * t,
+        origin[2] + dir[2] * t,
+    ];
     let q = [a[0] + d1[0] * s, a[1] + d1[1] * s, a[2] + d1[2] * s];
     let dist2 = (p[0] - q[0]).powi(2) + (p[1] - q[1]).powi(2) + (p[2] - q[2]).powi(2);
     (dist2, s, t)
@@ -171,10 +179,8 @@ pub fn damage_for(spec: &WeaponSpec, distance_m: f32, zone: HitZone) -> f32 {
     } else if distance_m >= spec.falloff_end_m {
         spec.falloff_min
     } else {
-        1.0
-            - (1.0 - spec.falloff_min)
-                * (distance_m - spec.falloff_start_m)
-                / (spec.falloff_end_m - spec.falloff_start_m)
+        1.0 - (1.0 - spec.falloff_min) * (distance_m - spec.falloff_start_m)
+            / (spec.falloff_end_m - spec.falloff_start_m)
     };
     spec.damage * ratio * mult
 }
@@ -199,13 +205,26 @@ pub fn apply_damage(victim: &mut Player, raw_damage: f32, zone: HitZone) -> u16 
 /// 命中检测：遍历视图快照中所有存活异队玩家，结合历史位置回溯，
 /// 取最近且未被掩体阻挡的命中。
 /// 射线是否穿过烟雾云（阻挡命中）。
-fn ray_sphere_blocked(origin: [f32; 3], dir: [f32; 3], target_t: f32, smoke: &SmokeBlocker) -> bool {
-    let m = [smoke.pos[0] - origin[0], smoke.pos[1] - origin[1], smoke.pos[2] - origin[2]];
+fn ray_sphere_blocked(
+    origin: [f32; 3],
+    dir: [f32; 3],
+    target_t: f32,
+    smoke: &SmokeBlocker,
+) -> bool {
+    let m = [
+        smoke.pos[0] - origin[0],
+        smoke.pos[1] - origin[1],
+        smoke.pos[2] - origin[2],
+    ];
     let t = dot(m, dir);
     if t < 0.0 || t > target_t {
         return false;
     }
-    let closest = [origin[0] + dir[0] * t, origin[1] + dir[1] * t, origin[2] + dir[2] * t];
+    let closest = [
+        origin[0] + dir[0] * t,
+        origin[1] + dir[1] * t,
+        origin[2] + dir[2] * t,
+    ];
     let d2 = (closest[0] - smoke.pos[0]).powi(2)
         + (closest[1] - smoke.pos[1]).powi(2)
         + (closest[2] - smoke.pos[2]).powi(2);
@@ -249,9 +268,14 @@ pub fn fire_hitscan(
 
         let pos = replayed_pos(victim.id, victim.pos, history, target_tick);
         let feet = [pos[0], pos[1], pos[2]];
-        let head = [pos[0], pos[1] + STAND_HEIGHT, pos[2]];
+        let head_height = if victim.crouching {
+            CROUCH_HEIGHT
+        } else {
+            STAND_HEIGHT
+        };
+        let head = [pos[0], pos[1] + head_height, pos[2]];
         let (dist2, s, t) = ray_segment(origin, dir, feet, head);
-        if dist2 > HIT_RADIUS * HIT_RADIUS {
+        if dist2 > HIT_RADIUS * HIT_RADIUS || t > spec.max_range_m {
             continue;
         }
 
@@ -270,7 +294,7 @@ pub fn fire_hitscan(
                 }
             }
         }
-        if !blocked {
+        if !blocked && !spec.melee {
             for smoke in smokes {
                 if ray_sphere_blocked(origin, dir, t, smoke) {
                     blocked = true;
@@ -283,12 +307,115 @@ pub fn fire_hitscan(
         }
 
         let (zone, headshot) = zone_from_s(s);
+        let headshot = headshot && !spec.melee;
         let distance_m = t; // 沿射线的距离
         let damage = damage_for(&spec, distance_m, zone);
 
-        if best.as_ref().map_or(true, |(_, bt)| t < *bt) {
-            best = Some((Hit { victim_id: victim.id, damage, zone, distance_m, headshot }, t));
+        if best.as_ref().is_none_or(|(_, bt)| t < *bt) {
+            best = Some((
+                Hit {
+                    victim_id: victim.id,
+                    damage,
+                    zone,
+                    distance_m,
+                    headshot,
+                },
+                t,
+            ));
         }
     }
     best.map(|(h, _)| h)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn player_view(id: u32, team: u8, pos: [f32; 3], crouching: bool, pitch: f32) -> PlayerView {
+        PlayerView {
+            id,
+            pos,
+            crouching,
+            yaw: 0.0,
+            pitch,
+            alive: true,
+            team,
+            weapon_id: super::super::weapon::WEAPON_P9,
+            ammo: 12,
+            reloading: false,
+            next_fire_tick: 0,
+            rtt_ms: 0,
+        }
+    }
+
+    #[test]
+    fn crouched_target_does_not_keep_standing_hit_height() {
+        let shooter = player_view(1, 1, [0.0, 0.0, 0.0], false, 3.0);
+        let standing = player_view(2, 2, [0.0, 0.0, -5.0], false, 0.0);
+        let crouching = player_view(2, 2, [0.0, 0.0, -5.0], true, 0.0);
+        let bounds = Aabb {
+            min: [-100.0, -10.0, -100.0],
+            max: [100.0, 10.0, 100.0],
+        };
+        let history = HashMap::new();
+
+        assert!(fire_hitscan(
+            &shooter,
+            &[shooter, standing],
+            &[],
+            &bounds,
+            &[],
+            &history,
+            0,
+            64,
+        )
+        .is_some());
+        assert!(fire_hitscan(
+            &shooter,
+            &[shooter, crouching],
+            &[],
+            &bounds,
+            &[],
+            &history,
+            0,
+            64,
+        )
+        .is_none());
+    }
+
+    #[test]
+    fn knife_hit_is_limited_to_melee_range() {
+        let mut shooter = player_view(1, 1, [0.0, 0.0, 0.0], false, 0.0);
+        shooter.weapon_id = super::super::weapon::WEAPON_KNIFE;
+        let near = player_view(2, 2, [0.0, 0.0, -2.0], false, 0.0);
+        let far = player_view(2, 2, [0.0, 0.0, -3.0], false, 0.0);
+        let bounds = Aabb {
+            min: [-100.0, -10.0, -100.0],
+            max: [100.0, 10.0, 100.0],
+        };
+        let history = HashMap::new();
+
+        assert!(fire_hitscan(
+            &shooter,
+            &[shooter, near],
+            &[],
+            &bounds,
+            &[],
+            &history,
+            0,
+            64,
+        )
+        .is_some());
+        assert!(fire_hitscan(
+            &shooter,
+            &[shooter, far],
+            &[],
+            &bounds,
+            &[],
+            &history,
+            0,
+            64,
+        )
+        .is_none());
+    }
 }

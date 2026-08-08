@@ -1,0 +1,35 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "战术竞技FPS",
+  "version": "0.1.0",
+  "identifier": "com.fpsweb.tactical",
+  "build": {
+    "beforeDevCommand": "npm run dev -- --host 127.0.0.1 --port 5174",
+    "beforeBuildCommand": "npm run build",
+    "devUrl": "http://127.0.0.1:5174",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "战术竞技FPS",
+        "width": 1440,
+        "height": 900,
+        "minWidth": 1024,
+        "minHeight": 640,
+        "resizable": true,
+        "fullscreen": false
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; connect-src 'self' http://127.0.0.1:8080 http://localhost:8080 ws://127.0.0.1:9000 ws://localhost:9000 http://127.0.0.1:5173 ws://127.0.0.1:5173 http://localhost:5173 ws://localhost:5173 http://127.0.0.1:5174 ws://127.0.0.1:5174 http://localhost:5174 ws://localhost:5174; img-src 'self' data: blob:; media-src 'self' blob:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; script-src 'self'"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "nsis",
+    "icon": [
+      "icons/icon.ico"
+    ]
+  }
+}

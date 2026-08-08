@@ -8,8 +8,9 @@ mod telemetry;
 
 use config::Config;
 use std::error::Error;
+use std::sync::Arc;
 use tokio::net::TcpListener;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, Semaphore};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
@@ -29,6 +30,7 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
 
     // 权威模拟循环（独立任务，与连接处理解耦）
     tokio::spawn(server::run_tick_loop(cfg.clone(), inbound_rx));
+    let connection_limit = Arc::new(Semaphore::new(cfg.max_connections.max(1)));
 
     loop {
         tokio::select! {
@@ -36,7 +38,14 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
                 let (stream, addr) = accepted?;
                 let tx = inbound_tx.clone();
                 let cfg = cfg.clone();
-                tokio::spawn(server::handle_connection(stream, addr, tx, cfg));
+                let permit = match connection_limit.clone().try_acquire_owned() {
+                    Ok(permit) => permit,
+                    Err(_) => {
+                        log::warn!("连接数已达上限，拒绝 {addr}");
+                        continue;
+                    }
+                };
+                tokio::spawn(server::handle_connection(stream, addr, tx, cfg, permit));
             }
             _ = tokio::signal::ctrl_c() => {
                 log::info!("收到 Ctrl-C，关闭中");

@@ -8,9 +8,10 @@ export function Scoreboard({ match }: { match: Match }) {
 
   const rows = useMemo(() => {
     const all = [
-      { id: local.id, health: local.health, ammo: local.ammo, crouching: local.crouching, you: true },
+      { id: local.id, displayName: '你', health: local.health, ammo: local.ammo, crouching: local.crouching, you: true },
       ...others.map((e) => ({
         id: e.id,
+        displayName: e.displayName ?? (e.isBot ? `BOT-${e.id - 99}` : `#${e.id}`),
         health: e.health,
         ammo: 0,
         crouching: e.crouching,
@@ -33,7 +34,7 @@ export function Scoreboard({ match }: { match: Match }) {
         <tbody>
           {rows.map((r) => (
             <tr key={r.id}>
-              <td>{r.you ? '你' : `#${r.id}`}</td>
+              <td>{r.you ? '你' : r.displayName}</td>
               <td>{r.health}</td>
               <td>{r.crouching ? '下蹲' : '—'}</td>
             </tr>

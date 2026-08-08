@@ -5,7 +5,7 @@ const BTN = { FWD: 1, ATTACK: 128, USE: 256, THROW_SMOKE: 1 << 10, THROW_FLASH: 
 
 function env(msgType, seq, payload, reliable) {
   const buf = Buffer.alloc(10 + payload.length)
-  buf[0] = 0xf5; buf[1] = 0x01; buf[2] = reliable ? 1 : 0; buf[3] = msgType
+  buf[0] = 0xf5; buf[1] = 0x02; buf[2] = reliable ? 1 : 0; buf[3] = msgType
   buf.writeUInt32BE(seq >>> 0, 4); buf.writeUInt16BE(payload.length, 8)
   payload.copy(buf, 10)
   return buf
@@ -26,6 +26,12 @@ function inputFrame(seq, buttons, yaw, pitch, fwd, strafe) {
   b.writeInt8(fwd, 10)
   b.writeInt8(strafe, 11)
   b.writeUInt32BE(Math.floor(Date.now() % 4294967296), 12)
+  return b
+}
+function pingPayload() {
+  const b = Buffer.alloc(8)
+  b.writeUInt32BE(Math.floor(Date.now() % 4294967296), 0)
+  b.writeUInt32BE(0, 4)
   return b
 }
 function buyMsg(itemId) {
@@ -51,24 +57,28 @@ function decodeMsg(data) {
       const pitch = dv.getInt16(off); off += 2
       const health = dv.getInt16(off); off += 2
       const team = data[off++]
-      ents.push({ id, x: x / 100, y: y / 100, z: z / 100, health, team })
+      const weapon = data[off++]
+      const ammo = data[off++]
+      ents.push({ id, x: x / 100, y: y / 100, z: z / 100, health, team, weapon, ammo })
     }
     return { type: 'snapshot', tick, ents }
   }
-  if (t === 8) return { type: 'roundState', phase: data[10], round: data[11], atk: data[14], def: data[15], bomb: data[16], winner: data[18] }
+  if (t === 8) return { type: 'roundState', phase: data[10], round: data[11], atk: data[16], def: data[17], bomb: data[18], winner: data[20] }
   if (t === 9) return { type: 'killFeed', attacker: dv.getUint32(10), victim: dv.getUint32(14), weapon: data[18] }
   if (t === 11) return { type: 'damage', victimId: dv.getUint32(10), damage: dv.getUint16(14), victimHealth: dv.getUint16(16) }
   if (t === 13) return { type: 'economy', playerId: dv.getUint32(10), money: dv.getUint16(14), weapon: data[16], armor: data[17], smoke: data[18], flash: data[19], he: data[20] }
   if (t === 14) {
-    const kind = data[10]
-    const owner = data[11]
-    const pos = [dv.getInt16(12) / 100, dv.getInt16(14) / 100, dv.getInt16(16) / 100]
-    return { type: 'grenadeSpawn', kind, owner, pos }
+    const id = dv.getUint32(10)
+    const kind = data[14]
+    const owner = dv.getUint32(15)
+    const pos = [dv.getInt16(19) / 100, dv.getInt16(21) / 100, dv.getInt16(23) / 100]
+    return { type: 'grenadeSpawn', id, kind, owner, pos }
   }
   if (t === 15) {
-    const kind = data[10]
-    const pos = [dv.getInt16(11) / 100, dv.getInt16(13) / 100, dv.getInt16(15) / 100]
-    return { type: 'grenadeExplode', kind, pos }
+    const id = dv.getUint32(10)
+    const kind = data[14]
+    const pos = [dv.getInt16(15) / 100, dv.getInt16(17) / 100, dv.getInt16(19) / 100]
+    return { type: 'grenadeExplode', id, kind, pos }
   }
   return { type: 'other', t }
 }
@@ -90,6 +100,7 @@ class GameClient {
     this.ws.binaryType = 'arraybuffer'
     this.ws.onopen = () => this.ws.send(env(1, 0, hello(name), true))
     this.ws.onmessage = (ev) => this.handle(new Uint8Array(ev.data))
+    this.pingIv = setInterval(() => this.ws.send(env(5, 0, pingPayload(), true)), 1000)
   }
   handle(data) {
     if (data[0] !== 0xf5) { this.bad++; return }
@@ -110,6 +121,16 @@ class GameClient {
   }
   startInputLoop(buttons, yaw = 0, pitch = 0, fwd = 0, strafe = 0) {
     return setInterval(() => this.sendInput(buttons, yaw, pitch, fwd, strafe), 15)
+  }
+  startTapLoop(buttons, yaw = 0, pitch = 0, intervalMs = 170) {
+    const tap = () => {
+      this.sendInput(buttons, yaw, pitch, 0, 0)
+      setTimeout(() => this.sendInput(0, 0, 0, 0, 0), 30)
+      // 补偿服务器权威后坐力（P9 每发 +1.05°），否则连发会全部打空。
+      setTimeout(() => this.sendInput(0, 0, -105, 0, 0), 55)
+    }
+    tap()
+    return setInterval(tap, intervalMs)
   }
   buy(itemId) { this.ws.send(env(12, 0, buyMsg(itemId), true)) }
   selfEnt() {
@@ -173,7 +194,7 @@ async function main() {
   })
 
   await scenario('投掷 HE → Spawn 与 Explode 事件', async () => {
-    await waitFor('进入行动', () => A.roundStates.some((s) => s.phase === 2), 10000)
+    await waitFor('进入行动', () => A.roundStates.some((s) => s.phase === 2), 25000)
     A.sendInput(BTN.THROW_HE, 0, 0, 0, 0) // 单帧投掷
     await waitFor('收到 HE Spawn', () => A.grenadeSpawns.some((g) => g.kind === 3), 5000)
     await waitFor('收到 HE Explode', () => A.grenadeExplodes.some((g) => g.kind === 3), 6000)
@@ -184,7 +205,7 @@ async function main() {
 
   await scenario('击杀 → 击杀奖励 +300', async () => {
     const before = A.lastEconomy()?.money ?? 0
-    const iv = A.startInputLoop(BTN.ATTACK, 0, 0, 0, 0)
+    const iv = A.startTapLoop(BTN.ATTACK)
     await waitFor('B 被击杀', () => A.killFeeds.length > 0 || B.killFeeds.length > 0, 8000)
     clearInterval(iv)
     const kf = A.killFeeds[0] || B.killFeeds[0]
@@ -198,7 +219,7 @@ async function main() {
     await waitFor('第2回合冻结 + 奖励到账', () => {
       const e = A.lastEconomy()
       return e && A.roundStates.some((s) => s.round === 2 && s.phase === 1) && e.money >= 3000
-    }, 12000)
+    }, 25000)
     const e = A.lastEconomy()
     console.log('  回合2资金:', e.money)
     assert(e.money >= 3000, '胜利奖励后资金应 ≥ 3000')

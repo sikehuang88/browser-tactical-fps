@@ -7,6 +7,7 @@ pub struct Config {
     pub port: u16,
     pub tick_rate: u32,
     pub max_players: usize,
+    pub max_connections: usize,
     pub protocol_version: u8,
 }
 
@@ -17,13 +18,14 @@ impl Default for Config {
             port: 9000,
             tick_rate: 64,
             max_players: 10,
+            max_connections: 128,
             protocol_version: crate::protocol::PROTOCOL_VERSION,
         }
     }
 }
 
 impl Config {
-    /// 解析 `--port` `--tick-rate` `--max-players` 参数。
+    /// 解析 `--port` `--tick-rate` `--max-players` `--max-connections` 参数。
     pub fn parse() -> Config {
         let mut cfg = Config::default();
         let args: Vec<String> = std::env::args().collect();
@@ -39,7 +41,11 @@ impl Config {
                 }
                 "--tick-rate" => {
                     if let Some(v) = next {
-                        cfg.tick_rate = v.parse().unwrap_or(cfg.tick_rate);
+                        cfg.tick_rate = v
+                            .parse::<u32>()
+                            .ok()
+                            .filter(|rate| (1..=1000).contains(rate))
+                            .unwrap_or(cfg.tick_rate);
                     }
                     i += 1;
                 }
@@ -49,9 +55,15 @@ impl Config {
                     }
                     i += 1;
                 }
+                "--max-connections" => {
+                    if let Some(v) = next {
+                        cfg.max_connections = v.parse().unwrap_or(cfg.max_connections);
+                    }
+                    i += 1;
+                }
                 "--help" | "-h" => {
                     println!(
-                        "用法: fpsweb-server [--port 9000] [--tick-rate 64] [--max-players 10]\n\
+                        "用法: fpsweb-server [--port 9000] [--tick-rate 64] [--max-players 10] [--max-connections 128]\n\
                          服务器权威模拟频率默认 64 tick/s，可在压测环境切换 32/128。"
                     );
                     std::process::exit(0);

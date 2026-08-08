@@ -11,9 +11,30 @@ CREATE TABLE IF NOT EXISTS users (
     level         INTEGER NOT NULL DEFAULT 1,
     rating_score  INTEGER NOT NULL DEFAULT 1000,
     rating_tier   TEXT NOT NULL DEFAULT 'unranked',
+    experience    INTEGER NOT NULL DEFAULT 0,
+    credits       INTEGER NOT NULL DEFAULT 2450,
+    kills         INTEGER NOT NULL DEFAULT 0,
+    deaths        INTEGER NOT NULL DEFAULT 0,
+    wins          INTEGER NOT NULL DEFAULT 0,
+    losses        INTEGER NOT NULL DEFAULT 0,
+    matches       INTEGER NOT NULL DEFAULT 0,
+    last_seen_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
     penalty_type  TEXT NOT NULL DEFAULT '',
     created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS user_tasks (
+    user_id      TEXT NOT NULL REFERENCES users(id),
+    task_id      TEXT NOT NULL,
+    value        INTEGER NOT NULL DEFAULT 0,
+    target       INTEGER NOT NULL,
+    reward       INTEGER NOT NULL,
+    claimed      BOOLEAN NOT NULL DEFAULT FALSE,
+    tracked      BOOLEAN NOT NULL DEFAULT FALSE,
+    expires_at   TIMESTAMPTZ NOT NULL,
+    updated_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (user_id, task_id)
 );
 
 -- 显示名唯一约束（AUTH-003：重复规则校验）

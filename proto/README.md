@@ -35,7 +35,7 @@
 ```
 偏移   长度   字段
 0      1      magic        0xF5
-1      1      protocolVer  当前 = 0x01
+1      1      protocolVer  当前 = 0x02
 2      1      flags        bit0 = reliable，bit1 = retransmit
 3      1      msgType      见下表
 4      4      seq          客户端→服务器: 输入帧序号；服务器→客户端: tick
@@ -86,10 +86,12 @@ u16 buttons:  bit0 前移 bit1 后移 bit2 左移 bit3 右移
              bit4 跳跃 bit5 下蹲 bit6 疾跑 bit7 开火
              bit8 使用 bit9 换弹
              bit10 投烟雾弹 bit11 投闪光弹 bit12 投高爆手雷
+             bit13 切换主武器 bit14 切换战术刀 bit15 切换副武器
 i16 yawDelta       # 厘度，相对增量
 i16 pitchDelta     # 厘度，相对增量
 i8  forwardAxis    # -127..127
 i8  strafeAxis     # -127..127
+u32 clientSentAtMs # 客户端墙上时钟毫秒（mod 2^32），服务器据此实测 RTT
 ```
 
 **Snapshot (0x04)**（服务器 20~32Hz 下发，仅实体差异后按需全量）
@@ -98,18 +100,20 @@ u32 tick
 u8  entityCount
 per entity:
   u32 id                      # 服务器实体 id（客户端据此跳过本地玩家）
-  u8  flags:  bit0 移动中 bit1 下蹲 bit2 持武器
+  u8  flags:  bit0 移动中 bit1 下蹲 bit2 换弹中 bit3 疾跑中
   i16 x, i16 y, i16 z      # 厘米
   i16 yaw, i16 pitch       # 厘度
   i16 health
   u8  team                  # 1=攻击方 2=防守方
+  u8  weapon_id
+  u8  ammo
 ```
 
 **Ping (0x05)** / **Pong (0x06)**
 ```
-u32 clientSentAtMs
+Ping: u32 clientSentAtMs, u32 measuredRttMs  # measuredRttMs 保留字段；服务器以自身时钟实测 RTT，不信任客户端上报
+Pong: u32 clientSentAtMs, u32 serverRecvAtMs
 ```
-Pong 追加 `u32 serverRecvAtMs`。
 
 **Kick (0x07)**
 ```
@@ -120,11 +124,11 @@ u8 reason: 0=版本不匹配 1=服务器已满 2=协议错误 3=封禁
 ```
 u8  phase       # 0=idle 1=freeze 2=active 3=round_end 4=match_end
 u8  round       # 1 起
-u16 time_ms     # 剩余毫秒
+u32 time_ms     # 剩余毫秒
 u8  attack_score
 u8  defend_score
 u8  bomb        # 0=none 1=planting 2=planted 3=defusing 4=exploded 5=defused
-u8  bomb_site   # 0=A 1=B
+u8  bomb_site   # 0=A 1=B 2=C
 u8  winner      # 0=none 1=attack 2=defend
 ```
 
@@ -170,14 +174,16 @@ u8  n_he
 
 **GrenadeSpawn (0x0E)**（S→C，投掷物生成）
 ```
+u32 grenade_id
 u8  type     # 1=烟雾 2=闪光 3=高爆
-u8  owner_id
+u32 owner_id
 i16 x, y, z     # 厘米
 i16 vx, vy, vz  # 厘米/秒
 ```
 
 **GrenadeExplode (0x0F)**（S→C，爆炸/生效）
 ```
+u32 grenade_id
 u8  type
 i16 x, y, z     # 厘米
 ```
@@ -189,7 +195,7 @@ u8 strength   # 0..100 致盲强度（已含朝向/距离衰减）
 
 ### 带宽预估
 
-- InputFrame：10 + 11 = 21 字节 × 客户端输入频率（≤64Hz）≈ 1.3 KB/s/玩家上行。
+- InputFrame：10 + 16 = 26 字节 × 客户端输入频率（≤64Hz）≈ 1.7 KB/s/玩家上行。
 - Snapshot：10 + 13×n 字节 @20Hz，10 人 ≈ 2.8 KB/s/玩家下行，远低于 250 Kbps 目标。
 
 ---

@@ -48,7 +48,9 @@ export class Effects {
   update(local: LocalPlayerState, dt: number): void {
     this.audio.setListener(local.position, local.yaw)
 
-    // 本地开火
+    // The counter resets on a new round/player reset; re-baseline before
+    // comparing so the first shot of the next round still produces feedback.
+    if (local.shotsFired < this.lastShots) this.lastShots = local.shotsFired
     if (local.shotsFired > this.lastShots) {
       const n = local.shotsFired - this.lastShots
       for (let i = 0; i < n && i < 4; i++) {
@@ -76,6 +78,14 @@ export class Effects {
 
   onKill(): void {
     this.audio.play({ type: 'kill' })
+  }
+
+  onHit(killed = false): void {
+    if (!killed) this.audio.play({ type: 'hit' })
+  }
+
+  onHurt(_damage: number): void {
+    this.audio.play({ type: 'hurt' })
   }
 
   onBuy(): void {

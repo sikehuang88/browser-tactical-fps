@@ -42,5 +42,5 @@ build:
 
 check:
 	cd client && npx tsc --noEmit
-	cd server && cargo build
-	cd backend && go build ./...
+	cd server && cargo build && cargo test --quiet
+	cd backend && go build ./... && go test ./...

@@ -13,6 +13,11 @@ interface TimedSnapshot {
 export class SnapshotInterpolator {
   private readonly buffer: TimedSnapshot[] = []
   private readonly historyMs = 1000
+  private tickRate = 64
+
+  setTickRate(tickRate: number): void {
+    if (tickRate > 0) this.tickRate = tickRate
+  }
 
   add(snapshot: ServerSnapshot, receivedAtMs: number): void {
     this.buffer.push({ tick: snapshot.tick, receivedAtMs, entities: snapshot.entities })
@@ -23,20 +28,25 @@ export class SnapshotInterpolator {
   entitiesAt(nowMs: number, renderDelayMs = 100): EntitySnapshot[] {
     const b = this.buffer
     if (b.length === 0) return []
-    const t = nowMs - renderDelayMs
+    const tickMs = 1000 / Math.max(1, this.tickRate)
+    const latest = b[b.length - 1]
+    // 以服务器 tick 为时间轴，避免本地到达抖动导致插值跳变。
+    const serverNowMs = latest.tick * tickMs + (nowMs - latest.receivedAtMs)
+    const t = serverNowMs - renderDelayMs
+    const timeOf = (snapshot: TimedSnapshot): number => snapshot.tick * tickMs
 
     let a = b[0]
     let c = b[b.length - 1]
     for (let i = 0; i < b.length - 1; i++) {
-      if (b[i].receivedAtMs <= t && b[i + 1].receivedAtMs >= t) {
+      if (timeOf(b[i]) <= t && timeOf(b[i + 1]) >= t) {
         a = b[i]
         c = b[i + 1]
         break
       }
     }
 
-    const span = c.receivedAtMs - a.receivedAtMs
-    const f = span <= 0 ? 1 : clamp((t - a.receivedAtMs) / span, 0, 1)
+    const span = timeOf(c) - timeOf(a)
+    const f = span <= 0 ? 1 : clamp((t - timeOf(a)) / span, 0, 1)
     return lerpEntities(a.entities, c.entities, f)
   }
 
@@ -74,9 +84,12 @@ function lerpEntities(a: EntitySnapshot[], c: EntitySnapshot[], f: number): Enti
       yaw: lerpAngle(start.yaw, end.yaw, f),
       pitch: start.pitch + (end.pitch - start.pitch) * f,
       moving: end.moving,
+      sprinting: end.sprinting,
       crouching: end.crouching,
       health: end.health,
       weaponId: end.weaponId,
+      ammo: end.ammo,
+      reloading: end.reloading,
       team: end.team,
     })
   }

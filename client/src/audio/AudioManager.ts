@@ -13,6 +13,8 @@ export type AudioEvent =
   | { type: 'flash' }
   | { type: 'buy' }
   | { type: 'kill' }
+  | { type: 'hit' }
+  | { type: 'hurt' }
 
 export class AudioManager {
   private ctx: AudioContext | null = null
@@ -85,12 +87,22 @@ export class AudioManager {
       case 'kill':
         this.playKill()
         break
+      case 'hit':
+        this.playHit()
+        break
+      case 'hurt':
+        this.playHurt()
+        break
     }
   }
 
   // ---------- 声音实现 ----------
 
   private playShot(weaponId: number, pos?: Vec3, local = true): void {
+    if (weaponId === 4) {
+      this.playHeavyShot(pos, local)
+      return
+    }
     const { pan, gain } = this.spatial(pos, local)
     const t = this.ctx!.currentTime
     const noise = this.ctx!.createBufferSource()
@@ -116,6 +128,66 @@ export class AudioManager {
     this.route(og, pan)
     osc.start(t)
     osc.stop(t + 0.15)
+  }
+
+  /** Heavy anti-materiel rifle report: sharp crack, pressure blast and long low tail. */
+  private playHeavyShot(pos?: Vec3, local = true): void {
+    const { pan, gain } = this.spatial(pos, local)
+    const t = this.ctx!.currentTime
+
+    const crack = this.ctx!.createBufferSource()
+    crack.buffer = this.noiseBuf!
+    const crackFilter = this.ctx!.createBiquadFilter()
+    crackFilter.type = 'highpass'
+    crackFilter.frequency.setValueAtTime(1800, t)
+    crackFilter.frequency.exponentialRampToValueAtTime(700, t + 0.16)
+    const crackGain = this.ctx!.createGain()
+    crackGain.gain.setValueAtTime(1.15 * gain, t)
+    crackGain.gain.exponentialRampToValueAtTime(0.001, t + 0.24)
+    crack.connect(crackFilter).connect(crackGain)
+    this.route(crackGain, pan)
+    crack.start(t)
+    crack.stop(t + 0.28)
+
+    const blast = this.ctx!.createBufferSource()
+    blast.buffer = this.noiseBuf!
+    const blastFilter = this.ctx!.createBiquadFilter()
+    blastFilter.type = 'lowpass'
+    blastFilter.frequency.setValueAtTime(900, t)
+    blastFilter.frequency.exponentialRampToValueAtTime(100, t + 0.9)
+    const blastGain = this.ctx!.createGain()
+    blastGain.gain.setValueAtTime(1.35 * gain, t)
+    blastGain.gain.exponentialRampToValueAtTime(0.001, t + 1.05)
+    blast.connect(blastFilter).connect(blastGain)
+    this.route(blastGain, pan)
+    blast.start(t)
+    blast.stop(t + 1.15)
+
+    const sub = this.ctx!.createOscillator()
+    sub.type = 'sine'
+    sub.frequency.setValueAtTime(52, t)
+    sub.frequency.exponentialRampToValueAtTime(28, t + 0.75)
+    const subGain = this.ctx!.createGain()
+    subGain.gain.setValueAtTime(0.9 * gain, t)
+    subGain.gain.exponentialRampToValueAtTime(0.001, t + 0.85)
+    sub.connect(subGain)
+    this.route(subGain, pan)
+    sub.start(t)
+    sub.stop(t + 0.95)
+
+    const tail = this.ctx!.createBufferSource()
+    tail.buffer = this.noiseBuf!
+    const tailFilter = this.ctx!.createBiquadFilter()
+    tailFilter.type = 'bandpass'
+    tailFilter.frequency.setValueAtTime(420, t + 0.04)
+    tailFilter.Q.value = 0.7
+    const tailGain = this.ctx!.createGain()
+    tailGain.gain.setValueAtTime(0.55 * gain, t + 0.04)
+    tailGain.gain.exponentialRampToValueAtTime(0.001, t + 1.35)
+    tail.connect(tailFilter).connect(tailGain)
+    this.route(tailGain, pan)
+    tail.start(t + 0.04)
+    tail.stop(t + 1.45)
   }
 
   private playReload(local = true): void {
@@ -245,6 +317,51 @@ export class AudioManager {
       o.start(t + i * 0.1)
       o.stop(t + i * 0.1 + 0.15)
     }
+  }
+
+  private playHit(): void {
+    const t = this.ctx!.currentTime
+    const osc = this.ctx!.createOscillator()
+    osc.type = 'triangle'
+    osc.frequency.setValueAtTime(980, t)
+    osc.frequency.exponentialRampToValueAtTime(520, t + 0.08)
+    const g = this.ctx!.createGain()
+    g.gain.setValueAtTime(0.22, t)
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.1)
+    osc.connect(g)
+    this.route(g, 0)
+    osc.start(t)
+    osc.stop(t + 0.12)
+  }
+
+  private playHurt(): void {
+    const t = this.ctx!.currentTime
+    const noise = this.ctx!.createBufferSource()
+    noise.buffer = this.noiseBuf!
+    const filter = this.ctx!.createBiquadFilter()
+    filter.type = 'bandpass'
+    filter.frequency.setValueAtTime(520, t)
+    filter.frequency.exponentialRampToValueAtTime(180, t + 0.18)
+    filter.Q.value = 1.1
+    const gain = this.ctx!.createGain()
+    gain.gain.setValueAtTime(0.34, t)
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.2)
+    noise.connect(filter).connect(gain)
+    this.route(gain, 0)
+    noise.start(t)
+    noise.stop(t + 0.23)
+
+    const tone = this.ctx!.createOscillator()
+    tone.type = 'sine'
+    tone.frequency.setValueAtTime(115, t)
+    tone.frequency.exponentialRampToValueAtTime(72, t + 0.16)
+    const toneGain = this.ctx!.createGain()
+    toneGain.gain.setValueAtTime(0.16, t)
+    toneGain.gain.exponentialRampToValueAtTime(0.001, t + 0.18)
+    tone.connect(toneGain)
+    this.route(toneGain, 0)
+    tone.start(t)
+    tone.stop(t + 0.2)
   }
 
   // ---------- 工具 ----------

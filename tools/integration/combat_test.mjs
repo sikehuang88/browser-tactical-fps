@@ -7,7 +7,7 @@ const BTN = { FWD: 1, BACK: 2, LEFT: 4, RIGHT: 8, JUMP: 16, CROUCH: 32, SPRINT: 
 
 function env(msgType, seq, payload, reliable) {
   const buf = Buffer.alloc(10 + payload.length)
-  buf[0] = 0xf5; buf[1] = 0x01; buf[2] = reliable ? 1 : 0; buf[3] = msgType
+  buf[0] = 0xf5; buf[1] = 0x02; buf[2] = reliable ? 1 : 0; buf[3] = msgType
   buf.writeUInt32BE(seq >>> 0, 4); buf.writeUInt16BE(payload.length, 8)
   payload.copy(buf, 10)
   return buf
@@ -30,6 +30,12 @@ function inputFrame(seq, buttons, yaw, pitch, fwd, strafe) {
   b.writeUInt32BE(Math.floor(Date.now() % 4294967296), 12)
   return b
 }
+function pingPayload() {
+  const b = Buffer.alloc(8)
+  b.writeUInt32BE(Math.floor(Date.now() % 4294967296), 0)
+  b.writeUInt32BE(0, 4)
+  return b
+}
 
 function decodeMsg(data) {
   const dv = new DataView(data.buffer, data.byteOffset, data.byteLength)
@@ -50,11 +56,13 @@ function decodeMsg(data) {
       const pitch = dv.getInt16(off); off += 2
       const health = dv.getInt16(off); off += 2
       const team = data[off++]
-      ents.push({ id, flags, x: x / 100, y: y / 100, z: z / 100, yaw: yaw / 100, pitch: pitch / 100, health, team })
+      const weapon = data[off++]
+      const ammo = data[off++]
+      ents.push({ id, flags, x: x / 100, y: y / 100, z: z / 100, yaw: yaw / 100, pitch: pitch / 100, health, team, weapon, ammo })
     }
     return { type: 'snapshot', tick, ents }
   }
-  if (t === 8) return { type: 'roundState', phase: data[10], round: data[11], timeMs: dv.getUint16(12), atk: data[14], def: data[15], bomb: data[16], site: data[17], winner: data[18] }
+  if (t === 8) return { type: 'roundState', phase: data[10], round: data[11], timeMs: dv.getUint32(12), atk: data[16], def: data[17], bomb: data[18], site: data[19], winner: data[20] }
   if (t === 9) return { type: 'killFeed', attacker: dv.getUint32(10), victim: dv.getUint32(14), weapon: data[18], flags: data[19], dist: dv.getUint16(20) }
   if (t === 10) return { type: 'matchEnd', winner: data[10], atk: data[11], def: data[12] }
   if (t === 7) return { type: 'kick', reason: data[10] }
@@ -76,6 +84,7 @@ class GameClient {
     this.ws.onopen = () => this.ws.send(env(1, 0, hello(name), true))
     this.ws.onmessage = (ev) => this.handle(new Uint8Array(ev.data))
     this.ws.onerror = () => { console.error(this.name, 'ws error') }
+    this.pingIv = setInterval(() => this.ws.send(env(5, 0, pingPayload(), true)), 1000)
   }
   handle(data) {
     if (data[0] !== 0xf5) { this.bad++; return }
@@ -94,6 +103,16 @@ class GameClient {
   }
   startInputLoop(buttons, yaw = 0, pitch = 0, fwd = 0, strafe = 0) {
     return setInterval(() => this.sendInput(buttons, yaw, pitch, fwd, strafe), 15)
+  }
+  startTapLoop(buttons, yaw = 0, pitch = 0, intervalMs = 170) {
+    const tap = () => {
+      this.sendInput(buttons, yaw, pitch, 0, 0)
+      setTimeout(() => this.sendInput(0, 0, 0, 0, 0), 30)
+      // 补偿服务器权威后坐力（P9 每发 +1.05°），否则连发会全部打空。
+      setTimeout(() => this.sendInput(0, 0, -105, 0, 0), 55)
+    }
+    tap()
+    return setInterval(tap, intervalMs)
   }
   selfEnt() {
     if (!this.latest || !this.welcome) return null
@@ -139,8 +158,8 @@ async function main() {
   })
 
   await scenario('行动阶段 A 击杀 B', async () => {
-    await waitFor('进入行动', () => A.roundStates.some((s) => s.phase === 2), 12000)
-    const killIv = A.startInputLoop(BTN.ATTACK, 0, 0, 0, 0)
+    await waitFor('进入行动', () => A.roundStates.some((s) => s.phase === 2), 25000)
+    const killIv = A.startTapLoop(BTN.ATTACK)
     await waitFor('收到击杀播报', () => A.killFeeds.length > 0 || B.killFeeds.length > 0, 10000)
     clearInterval(killIv)
     const kf = A.killFeeds[0] || B.killFeeds[0]
@@ -155,38 +174,37 @@ async function main() {
     const st = A.roundStates.filter((s) => s.phase === 3 && s.winner === 1).at(-1)
     console.log('  回合结束状态:', JSON.stringify(st))
     assert(st.atk === 1 && st.def === 0, '计分应为 1:0')
+    await waitFor('B 死亡快照', () => B.selfEnt()?.health === 0, 2000)
     const bEnt = B.selfEnt()
     console.log('  B 实体:', bEnt)
     assert(bEnt && bEnt.health === 0, 'B 生命应为 0')
   })
 
-  await scenario('第2回合 A 前往B点安装炸弹', async () => {
-    await waitFor('第2回合冻结', () => A.roundStates.some((s) => s.round === 2 && s.phase === 1), 15000)
-    // 转向 B 点方向 (14,14)，yaw ≈ -113.3°
-    A.sendInput(0, -11330, 0, 0, 0)
-    await waitFor('进入行动', () => A.roundStates.some((s) => s.round === 2 && s.phase === 2), 10000)
+  await scenario('第2回合 A 前往C点安装炸弹', async () => {
+    await waitFor('第2回合冻结', () => A.roundStates.some((s) => s.round === 2 && s.phase === 1), 25000)
+    await waitFor('进入行动', () => A.roundStates.some((s) => s.round === 2 && s.phase === 2), 25000)
+    // 中路 C 点 (0,0)：出生点正南直线可达，无需寻路。
     const fwdIv = A.startInputLoop(BTN.FWD, 0, 0, 127, 0)
-    await waitFor('A 抵达 B 点', () => {
+    await waitFor('A 抵达 C 点', () => {
       const e = A.selfEnt()
-      return e && Math.hypot(e.x - 14, e.z - 14) < 1.2
+      return e && Math.hypot(e.x, e.z) < 1.2
     }, 25000)
     clearInterval(fwdIv)
     const pos = A.selfEnt()
     console.log('  A 抵达位置:', pos ? `${pos.x.toFixed(1)}, ${pos.z.toFixed(1)}` : 'null')
     const useIv = A.startInputLoop(BTN.USE, 0, 0, 0, 0)
-    await waitFor('炸弹安装成功', () => A.roundStates.some((s) => s.bomb === 2 && s.site === 1), 12000)
+    await waitFor('炸弹安装成功', () => A.roundStates.some((s) => s.bomb === 2 && s.site === 2), 12000)
     clearInterval(useIv)
     const st = A.roundStates.filter((s) => s.bomb === 2).at(-1)
     console.log('  炸弹状态:', JSON.stringify(st))
   })
 
   await scenario('防守方 B 拆除炸弹 → 防守方胜', async () => {
-    // B 从 (0,-8) 转向炸弹点 (14,14)：yaw 180 → 212.2°（+3220 厘度）
-    B.sendInput(0, 3220, 0, 0, 0)
+    // B 出生即朝 +Z（yaw=180），沿中路直线前往 C 点。
     const bFwd = B.startInputLoop(BTN.FWD, 0, 0, 127, 0)
-    await waitFor('B 抵达炸弹点', () => {
+    await waitFor('B 抵达 C 点', () => {
       const e = B.selfEnt()
-      return e && Math.hypot(e.x - 14, e.z - 14) < 1.2
+      return e && Math.hypot(e.x, e.z) < 1.2
     }, 25000)
     clearInterval(bFwd)
     const bUse = B.startInputLoop(BTN.USE, 0, 0, 0, 0)

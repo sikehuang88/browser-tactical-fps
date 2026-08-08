@@ -57,7 +57,9 @@ impl TickStats {
         let input_lag = if self.input_lag_count > 0 {
             format!(
                 " · 输入延迟 avg={}ms max={}ms",
-                self.input_lag_total / self.input_lag_count,
+                self.input_lag_total
+                    .checked_div(self.input_lag_count)
+                    .unwrap_or(0),
                 self.input_lag_max
             )
         } else {

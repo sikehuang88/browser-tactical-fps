@@ -7,6 +7,11 @@ export default defineConfig({
   server: {
     port: 5173,
     host: true,
+    watch: {
+      // Large binary GLB assets are runtime inputs, not source files. Ignoring
+      // them prevents Windows ReadDirectoryChangesW/EBUSY watcher failures.
+      ignored: ['**/src-tauri/target/**', '**/public/assets/**/*.glb'],
+    },
   },
   build: {
     target: 'es2022',

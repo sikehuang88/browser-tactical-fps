@@ -5,6 +5,8 @@ import type { Effects } from '../game/effects'
 import type { PlayerView } from '../render/playerView'
 import type { EntityView } from '../render/entityView'
 import type { Renderer } from '../render/renderer'
+import type { DynamicWeatherSystem } from '../render/weather'
+import type { GroundTileSystem } from '../render/groundTiles'
 
 export interface EngineDeps {
   input: InputManager
@@ -14,6 +16,9 @@ export interface EngineDeps {
   renderer: Renderer
   /** 可选：音效 + 投掷物视觉效果控制器。 */
   effects?: Effects
+  /** Client-only atmospheric rendering. Does not affect authoritative simulation. */
+  weather?: DynamicWeatherSystem
+  ground?: GroundTileSystem
 }
 
 export interface EngineOptions extends EngineDeps {
@@ -32,6 +37,8 @@ export class Engine {
   private readonly entityView: EntityView
   private readonly renderer: Renderer
   private readonly effects?: Effects
+  private readonly weather?: DynamicWeatherSystem
+  private readonly ground?: GroundTileSystem
   private readonly stepMs: number
   private readonly clock = new Clock()
   private running = false
@@ -46,6 +53,8 @@ export class Engine {
     this.entityView = options.entityView
     this.renderer = options.renderer
     this.effects = options.effects
+    this.weather = options.weather
+    this.ground = options.ground
     this.stepMs = 1000 / (options.fixedHz ?? 64)
   }
 
@@ -66,6 +75,7 @@ export class Engine {
 
   private frame = (now: number): void => {
     if (!this.running) return
+    const frameDeltaSeconds = Math.min(Math.max(0, now - this.lastFrameMs) / 1000, 0.1)
     // 限制单帧最大累积量，避免长时间挂起后出现"追帧爆炸"
     this.accumulator = Math.min(this.accumulator + (now - this.lastFrameMs), this.stepMs * 8)
     this.lastFrameMs = now
@@ -76,14 +86,16 @@ export class Engine {
     }
 
     this.renderer.begin()
-    this.entityView.update(this.match.visibleEntities(), this.match.localId)
-    this.view.update(this.match.localState, now)
+    this.entityView.update(this.match.visibleEntities(), this.match.localId, frameDeltaSeconds)
+    this.view.update(this.match.renderLocalState(this.accumulator / this.stepMs), now)
+    this.weather?.update(frameDeltaSeconds, now / 1000, this.renderer.camera)
+    this.ground?.update(this.match.renderLocalState(this.accumulator / this.stepMs).position)
     this.renderer.render()
     this.rafId = requestAnimationFrame(this.frame)
   }
 
   private tick(dt: number): void {
-    const raw = this.input.sample()
+    const raw = this.input.sample(this.match.localState.weaponId)
     this.match.update(dt, raw)
     if (this.effects) {
       this.effects.process(this.match.drainEffects(), this.match.localId)

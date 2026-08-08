@@ -27,6 +27,8 @@ func (s *Service) GetOrCreateGuest(ctx context.Context, deviceID, language strin
 	id := guestID(deviceID)
 	u, err := s.store.GetUser(ctx, id)
 	if err == nil {
+		u.LastSeenAt = time.Now().UTC()
+		_ = s.store.UpdateUser(ctx, u)
 		return u, nil
 	}
 	if !errors.Is(err, store.ErrNotFound) {
@@ -41,6 +43,8 @@ func (s *Service) GetOrCreateGuest(ctx context.Context, deviceID, language strin
 		Level:       1,
 		RatingScore: 1000,
 		RatingTier:  "unranked",
+		Credits:     2450,
+		LastSeenAt:  time.Now().UTC(),
 		CreatedAt:   time.Now().UTC(),
 	}
 	if err := s.store.CreateUser(ctx, u); err != nil {

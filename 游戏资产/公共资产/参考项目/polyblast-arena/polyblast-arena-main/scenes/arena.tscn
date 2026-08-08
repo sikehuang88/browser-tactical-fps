@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://c1arenascene01"]
+
+[ext_resource type="Script" path="res://scenes/arena.gd" id="1"]
+
+[node name="Arena" type="NavigationRegion3D"]
+script = ExtResource("1")

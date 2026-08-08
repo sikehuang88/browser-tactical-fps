@@ -5,6 +5,7 @@ package postgres
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/fpsweb/game/backend/internal/store"
 )
@@ -21,4 +22,22 @@ func (s *Store) GetUser(context.Context, string) (*store.User, error) {
 	return nil, errors.New("未实现")
 }
 func (s *Store) UpdateUser(context.Context, *store.User) error { return errors.New("未实现") }
-func (s *Store) Close() error                                  { return nil }
+func (s *Store) ListTasks(context.Context, string, time.Time) ([]store.Task, error) {
+	return nil, errors.New("任务 PostgreSQL store 尚未实现")
+}
+func (s *Store) TrackTask(context.Context, string, string) error {
+	return errors.New("任务 PostgreSQL store 尚未实现")
+}
+func (s *Store) ClaimTask(context.Context, string, string, time.Time) (store.Task, error) {
+	return store.Task{}, errors.New("任务 PostgreSQL store 尚未实现")
+}
+func (s *Store) AdvanceTask(context.Context, string, string, int, time.Time) error {
+	return errors.New("任务 PostgreSQL store 尚未实现")
+}
+func (s *Store) GetCheckIn(context.Context, string, time.Time) (store.CheckIn, error) {
+	return store.CheckIn{}, errors.New("签到 PostgreSQL store 尚未实现")
+}
+func (s *Store) ClaimCheckIn(context.Context, string, time.Time) (store.CheckIn, error) {
+	return store.CheckIn{}, errors.New("签到 PostgreSQL store 尚未实现")
+}
+func (s *Store) Close() error { return nil }

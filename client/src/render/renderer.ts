@@ -3,12 +3,17 @@
 
 import * as THREE from 'three'
 
+export interface RendererOptions {
+  resolutionScale?: number
+  shadows?: boolean
+}
+
 export class Renderer {
   readonly gl: THREE.WebGLRenderer
   readonly scene: THREE.Scene
   readonly camera: THREE.PerspectiveCamera
 
-  constructor(container: HTMLElement, fov = 90) {
+  constructor(container: HTMLElement, fov = 90, options: RendererOptions = {}) {
     const gpuAvailable =
       typeof navigator !== 'undefined' &&
       'gpu' in navigator &&
@@ -23,9 +28,11 @@ export class Renderer {
       antialias: true,
       powerPreference: 'high-performance',
     })
-    this.gl.setPixelRatio(Math.min(window.devicePixelRatio, 2))
+    const resolutionScale = Math.min(1, Math.max(0.4, options.resolutionScale ?? 1))
+    this.gl.setPixelRatio(Math.min(window.devicePixelRatio, 2) * resolutionScale)
     this.gl.outputColorSpace = THREE.SRGBColorSpace
-    this.gl.shadowMap.enabled = false // M0 灰盒阶段不开阴影
+    this.gl.shadowMap.enabled = options.shadows ?? false
+    if (this.gl.shadowMap.enabled) this.gl.shadowMap.type = THREE.PCFSoftShadowMap
     this.gl.domElement.style.width = '100%'
     this.gl.domElement.style.height = '100%'
     this.gl.domElement.style.display = 'block'

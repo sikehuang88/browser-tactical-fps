@@ -9,30 +9,52 @@ export interface Aabb {
 }
 
 export const GROUND_Y = 0
-export const SPAWN: Vec3 = { x: 0, y: GROUND_Y, z: 8 }
+export const SPAWN: Vec3 = { x: 0, y: GROUND_Y, z: 24 }
 
 /** 竞技区边界（48m × 48m）。 */
 export const ARENA_BOUNDS: Aabb = {
-  min: { x: -24, y: -1, z: -24 },
-  max: { x: 24, y: 8, z: 24 },
+  min: { x: -28, y: -1, z: -28 },
+  max: { x: 28, y: 10, z: 28 },
 }
 
 /** 边界墙（用于渲染）。 */
 export const BOUNDS_WALLS: Aabb[] = [
-  { min: { x: -24, y: 0, z: -24 }, max: { x: -23, y: 4, z: 24 } },
-  { min: { x: 23, y: 0, z: -24 }, max: { x: 24, y: 4, z: 24 } },
-  { min: { x: -24, y: 0, z: -24 }, max: { x: 24, y: 4, z: -23 } },
-  { min: { x: -24, y: 0, z: 23 }, max: { x: 24, y: 4, z: 24 } },
+  { min: { x: -28, y: 0, z: -28 }, max: { x: -27, y: 5, z: 28 } },
+  { min: { x: 27, y: 0, z: -28 }, max: { x: 28, y: 5, z: 28 } },
+  { min: { x: -28, y: 0, z: -28 }, max: { x: 28, y: 5, z: -27 } },
+  { min: { x: -28, y: 0, z: 27 }, max: { x: 28, y: 5, z: 28 } },
 ]
 
-/** 内部掩体。 */
+/** 原创沙漠城镇爆破骨架：长道 A、短道 B、中路广场 C。 */
 export const WALLS: Aabb[] = [
-  { min: { x: -8, y: 0, z: -2 }, max: { x: -6, y: 2.4, z: 4 } },
-  { min: { x: 6, y: 0, z: -6 }, max: { x: 9, y: 2.2, z: -4 } },
-  { min: { x: -4, y: 0, z: 10 }, max: { x: -1, y: 3, z: 12 } },
-  { min: { x: 3, y: 0, z: 4 }, max: { x: 5, y: 1.2, z: 7 } },
-  { min: { x: -12, y: 0, z: -8 }, max: { x: -10, y: 4, z: -6 } },
-  { min: { x: -2, y: 0, z: -12 }, max: { x: 1, y: 2, z: -9 } },
+  // 长道外墙与 A 点房区，保留南北两端门洞。
+  { min: { x: -24, y: 0, z: -22 }, max: { x: -19, y: 4.5, z: -5 } },
+  { min: { x: -24, y: 0, z: 3 }, max: { x: -19, y: 4.5, z: 22 } },
+  { min: { x: -19, y: 0, z: -22 }, max: { x: -8, y: 3.6, z: -20 } },
+  { min: { x: -19, y: 0, z: -14 }, max: { x: -8, y: 3.6, z: -12 } },
+  { min: { x: -19, y: 0, z: -6 }, max: { x: -8, y: 3.6, z: -4 } },
+  // 短道外墙与 B 点房区。
+  { min: { x: 19, y: 0, z: -22 }, max: { x: 24, y: 4.5, z: -5 } },
+  { min: { x: 19, y: 0, z: 3 }, max: { x: 24, y: 4.5, z: 22 } },
+  { min: { x: 8, y: 0, z: -22 }, max: { x: 19, y: 3.6, z: -20 } },
+  { min: { x: 8, y: 0, z: -14 }, max: { x: 19, y: 3.6, z: -12 } },
+  { min: { x: 8, y: 0, z: -6 }, max: { x: 19, y: 3.6, z: -4 } },
+  // 中路 C 广场掩体与交叉火力。
+  { min: { x: -5, y: 0, z: -8 }, max: { x: -1, y: 1.3, z: -2 } },
+  { min: { x: 1, y: 0, z: 2 }, max: { x: 5, y: 1.3, z: 8 } },
+  { min: { x: -12, y: 0, z: 9 }, max: { x: -5, y: 2.4, z: 12 } },
+  { min: { x: 5, y: 0, z: 9 }, max: { x: 12, y: 2.4, z: 12 } },
+  // 南北出生区掩体。
+  { min: { x: -11, y: 0, z: 21 }, max: { x: -3, y: 1.4, z: 24 } },
+  { min: { x: 3, y: 0, z: 21 }, max: { x: 11, y: 1.4, z: 24 } },
+  { min: { x: -11, y: 0, z: -24 }, max: { x: -3, y: 1.4, z: -21 } },
+  { min: { x: 3, y: 0, z: -24 }, max: { x: 11, y: 1.4, z: -21 } },
+]
+
+export const BOMB_SITES: Array<{ id: 'A' | 'B' | 'C'; position: Vec3 }> = [
+  { id: 'A', position: { x: -14, y: 0, z: -10 } },
+  { id: 'B', position: { x: 14, y: 0, z: -10 } },
+  { id: 'C', position: { x: 0, y: 0, z: 0 } },
 ]
 
 function overlaps(x: number, y: number, z: number, halfW: number, height: number, w: Aabb): boolean {
@@ -78,7 +100,15 @@ export class MapCollision {
         vx = 0
       }
     }
-    out.x = clampAxis(out.x, this.bounds.min.x + halfW, this.bounds.max.x - halfW)
+    const minX = this.bounds.min.x + halfW
+    const maxX = this.bounds.max.x - halfW
+    if (out.x < minX) {
+      out.x = minX
+      if (vx < 0) vx = 0
+    } else if (out.x > maxX) {
+      out.x = maxX
+      if (vx > 0) vx = 0
+    }
 
     // Z 轴
     out.z += vz * dt
@@ -88,7 +118,15 @@ export class MapCollision {
         vz = 0
       }
     }
-    out.z = clampAxis(out.z, this.bounds.min.z + halfW, this.bounds.max.z - halfW)
+    const minZ = this.bounds.min.z + halfW
+    const maxZ = this.bounds.max.z - halfW
+    if (out.z < minZ) {
+      out.z = minZ
+      if (vz < 0) vz = 0
+    } else if (out.z > maxZ) {
+      out.z = maxZ
+      if (vz > 0) vz = 0
+    }
 
     // Y 轴（地面）
     out.y += vy * dt
@@ -107,7 +145,3 @@ export class MapCollision {
 }
 
 export const DEFAULT_COLLISION = new MapCollision(WALLS, ARENA_BOUNDS, GROUND_Y)
-
-function clampAxis(v: number, min: number, max: number): number {
-  return v < min ? min : v > max ? max : v
-}

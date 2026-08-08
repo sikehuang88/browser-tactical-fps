@@ -1,4 +1,4 @@
-// 业务后端入口。默认内存 store，配置 --pg-dsn 后走 PostgreSQL（迁移见 migrations/）。
+// 业务后端入口。默认使用本地 SQLite，保证玩家资料跨重启保留。
 package main
 
 import (
@@ -13,29 +13,25 @@ import (
 	"github.com/fpsweb/game/backend/internal/matchmaking"
 	"github.com/fpsweb/game/backend/internal/server"
 	"github.com/fpsweb/game/backend/internal/store"
-	"github.com/fpsweb/game/backend/internal/store/memory"
-	"github.com/fpsweb/game/backend/internal/store/postgres"
+	"github.com/fpsweb/game/backend/internal/store/sqlite"
 	"github.com/fpsweb/game/backend/internal/user"
 )
 
 func main() {
 	addr := flag.String("addr", ":8080", "监听地址")
-	pgDSN := flag.String("pg-dsn", "", "PostgreSQL DSN（留空使用内存 store）")
+	dbPath := flag.String("db", "data/fpsweb.db", "SQLite 数据库文件路径")
 	tokenSecret := flag.String("token-secret", "", "令牌签名密钥（留空自动生成随机密钥）")
 	flag.Parse()
 
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
 
-	var st store.Store = memory.New()
-	if *pgDSN != "" {
-		if pg, err := postgres.New(*pgDSN); err == nil {
-			st = pg
-			logger.Info("已连接 PostgreSQL")
-		} else {
-			logger.Error("连接 PostgreSQL 失败，回退内存 store", "err", err)
-		}
+	var st store.Store
+	if db, err := sqlite.New(*dbPath); err == nil {
+		st = db
+		logger.Info("已连接 SQLite", "path", *dbPath)
 	} else {
-		logger.Info("使用内存 store（未配置 --pg-dsn）")
+		logger.Error("SQLite 初始化失败", "err", err)
+		os.Exit(1)
 	}
 	defer st.Close()
 
@@ -54,6 +50,9 @@ func main() {
 		Addr:              *addr,
 		Handler:           srv.Handler(),
 		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       10 * time.Second,
+		WriteTimeout:      30 * time.Second,
+		IdleTimeout:       60 * time.Second,
 	}
 	logger.Info("业务后端启动", "addr", *addr)
 	if err := httpSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {

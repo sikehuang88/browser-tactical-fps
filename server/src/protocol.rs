@@ -4,7 +4,7 @@
 #![allow(dead_code)]
 
 pub const MAGIC: u8 = 0xF5;
-pub const PROTOCOL_VERSION: u8 = 0x01;
+pub const PROTOCOL_VERSION: u8 = 0x02;
 
 pub const MSG_HELLO: u8 = 0x01;
 pub const MSG_WELCOME: u8 = 0x02;
@@ -63,6 +63,9 @@ pub const BTN_RELOAD: u16 = 1 << 9;
 pub const BTN_THROW_SMOKE: u16 = 1 << 10;
 pub const BTN_THROW_FLASH: u16 = 1 << 11;
 pub const BTN_THROW_HE: u16 = 1 << 12;
+pub const BTN_EQUIP_FIREARM: u16 = 1 << 13;
+pub const BTN_EQUIP_KNIFE: u16 = 1 << 14;
+pub const BTN_EQUIP_SECONDARY: u16 = 1 << 15;
 
 // 投掷物类型
 pub const GRENADE_SMOKE: u8 = 1;
@@ -73,6 +76,7 @@ pub const GRENADE_HE: u8 = 3;
 pub const KICK_VERSION_MISMATCH: u8 = 0;
 pub const KICK_SERVER_FULL: u8 = 1;
 pub const KICK_PROTOCOL_ERROR: u8 = 2;
+pub const KICK_BANNED: u8 = 3;
 
 #[derive(Debug, Clone)]
 pub struct Envelope {
@@ -104,6 +108,8 @@ pub struct SnapshotEntity {
     pub pitch: i16,
     pub health: i16,
     pub team: u8,
+    pub weapon_id: u8,
+    pub ammo: u8,
 }
 
 // ---------- 信封 ----------
@@ -203,7 +209,7 @@ pub fn decode_input_frame(p: &[u8]) -> Result<InputFrame, String> {
 // ---------- Snapshot ----------
 
 pub fn encode_snapshot(tick: u32, entities: &[SnapshotEntity]) -> Vec<u8> {
-    let mut out = Vec::with_capacity(5 + entities.len() * 18);
+    let mut out = Vec::with_capacity(5 + entities.len() * 20);
     out.extend_from_slice(&tick.to_be_bytes());
     out.push(entities.len().min(255) as u8);
     for e in entities {
@@ -216,17 +222,25 @@ pub fn encode_snapshot(tick: u32, entities: &[SnapshotEntity]) -> Vec<u8> {
         out.extend_from_slice(&e.pitch.to_be_bytes());
         out.extend_from_slice(&e.health.to_be_bytes());
         out.push(e.team);
+        out.push(e.weapon_id);
+        out.push(e.ammo);
     }
     out
 }
 
 // ---------- Ping / Pong / Kick ----------
 
-pub fn decode_ping(payload: &[u8]) -> u32 {
+pub fn decode_ping(payload: &[u8]) -> (u32, u32) {
     if payload.len() < 4 {
-        return 0;
+        return (0, 0);
     }
-    u32::from_be_bytes([payload[0], payload[1], payload[2], payload[3]])
+    let sent = u32::from_be_bytes([payload[0], payload[1], payload[2], payload[3]]);
+    let measured_rtt = if payload.len() >= 8 {
+        u32::from_be_bytes([payload[4], payload[5], payload[6], payload[7]])
+    } else {
+        0
+    };
+    (sent, measured_rtt)
 }
 
 pub fn encode_pong(client_sent_at_ms: u32, server_recv_at_ms: u32) -> Vec<u8> {
@@ -249,7 +263,7 @@ pub fn encode_kick(reason: u8, detail: &str) -> Vec<u8> {
 pub struct RoundStateMsg {
     pub phase: u8,
     pub round: u8,
-    pub time_ms: u16,
+    pub time_ms: u32,
     pub attack_score: u8,
     pub defend_score: u8,
     pub bomb: u8,
@@ -258,7 +272,7 @@ pub struct RoundStateMsg {
 }
 
 pub fn encode_round_state(s: &RoundStateMsg) -> Vec<u8> {
-    let mut out = Vec::with_capacity(9);
+    let mut out = Vec::with_capacity(11);
     out.push(s.phase);
     out.push(s.round);
     out.extend_from_slice(&s.time_ms.to_be_bytes());
@@ -339,6 +353,7 @@ pub fn encode_economy(e: &EconomyMsg) -> Vec<u8> {
 
 #[derive(Clone, Copy, Debug)]
 pub struct GrenadeSpawnMsg {
+    pub id: u32,
     pub kind: u8,
     pub owner_id: u32,
     pub pos: [f32; 3],
@@ -346,9 +361,10 @@ pub struct GrenadeSpawnMsg {
 }
 
 pub fn encode_grenade_spawn(g: &GrenadeSpawnMsg) -> Vec<u8> {
-    let mut out = Vec::with_capacity(14);
+    let mut out = Vec::with_capacity(21);
+    out.extend_from_slice(&g.id.to_be_bytes());
     out.push(g.kind);
-    out.push(g.owner_id as u8);
+    out.extend_from_slice(&g.owner_id.to_be_bytes());
     for i in 0..3 {
         out.extend_from_slice(&((g.pos[i] * 100.0) as i16).to_be_bytes());
     }
@@ -360,12 +376,14 @@ pub fn encode_grenade_spawn(g: &GrenadeSpawnMsg) -> Vec<u8> {
 
 #[derive(Clone, Copy, Debug)]
 pub struct GrenadeExplodeMsg {
+    pub id: u32,
     pub kind: u8,
     pub pos: [f32; 3],
 }
 
 pub fn encode_grenade_explode(g: &GrenadeExplodeMsg) -> Vec<u8> {
-    let mut out = Vec::with_capacity(7);
+    let mut out = Vec::with_capacity(11);
+    out.extend_from_slice(&g.id.to_be_bytes());
     out.push(g.kind);
     for i in 0..3 {
         out.extend_from_slice(&((g.pos[i] * 100.0) as i16).to_be_bytes());

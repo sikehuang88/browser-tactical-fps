@@ -8,13 +8,12 @@ pub struct Aabb {
 }
 
 pub const GROUND_Y: f32 = 0.0;
-pub const SPAWN: [f32; 3] = [0.0, GROUND_Y, 8.0];
 /// 进攻方出生点。
-pub const SPAWN_ATTACK: [f32; 3] = [0.0, GROUND_Y, 8.0];
+pub const SPAWN_ATTACK: [f32; 3] = [0.0, GROUND_Y, 24.0];
 /// 防守方出生点。
-pub const SPAWN_DEFEND: [f32; 3] = [0.0, GROUND_Y, -8.0];
-/// 爆破点（A / B），与客户端地图标记一致。
-pub const BOMB_SITES: [[f32; 3]; 2] = [[-14.0, 0.0, -14.0], [14.0, 0.0, 14.0]];
+pub const SPAWN_DEFEND: [f32; 3] = [0.0, GROUND_Y, -24.0];
+/// Bomb sites: A long, B short, C mid courtyard. The round protocol still carries a site index.
+pub const BOMB_SITES: [[f32; 3]; 3] = [[-14.0, 0.0, -10.0], [14.0, 0.0, -10.0], [0.0, 0.0, 0.0]];
 /// 安装/拆除交互距离。
 pub const PLANT_DISTANCE: f32 = 2.0;
 pub const DEFUSE_DISTANCE: f32 = 2.0;
@@ -22,18 +21,84 @@ pub const DEFUSE_DISTANCE: f32 = 2.0;
 pub const BUY_ZONE_RADIUS: f32 = 5.0;
 
 pub const ARENA_BOUNDS: Aabb = Aabb {
-    min: [-24.0, -1.0, -24.0],
-    max: [24.0, 8.0, 24.0],
+    min: [-28.0, -1.0, -28.0],
+    max: [28.0, 10.0, 28.0],
 };
 
-/// 内部掩体（与客户端 WALLS 一致）。
-pub const WALLS: [Aabb; 6] = [
-    Aabb { min: [-8.0, 0.0, -2.0], max: [-6.0, 2.4, 4.0] },
-    Aabb { min: [6.0, 0.0, -6.0], max: [9.0, 2.2, -4.0] },
-    Aabb { min: [-4.0, 0.0, 10.0], max: [-1.0, 3.0, 12.0] },
-    Aabb { min: [3.0, 0.0, 4.0], max: [5.0, 1.2, 7.0] },
-    Aabb { min: [-12.0, 0.0, -8.0], max: [-10.0, 4.0, -6.0] },
-    Aabb { min: [-2.0, 0.0, -12.0], max: [1.0, 2.0, -9.0] },
+/// Original desert-town three-lane blockout (must mirror client/src/game/map.ts).
+pub const WALLS: [Aabb; 18] = [
+    Aabb {
+        min: [-24.0, 0.0, -22.0],
+        max: [-19.0, 4.5, -5.0],
+    },
+    Aabb {
+        min: [-24.0, 0.0, 3.0],
+        max: [-19.0, 4.5, 22.0],
+    },
+    Aabb {
+        min: [-19.0, 0.0, -22.0],
+        max: [-8.0, 3.6, -20.0],
+    },
+    Aabb {
+        min: [-19.0, 0.0, -14.0],
+        max: [-8.0, 3.6, -12.0],
+    },
+    Aabb {
+        min: [-19.0, 0.0, -6.0],
+        max: [-8.0, 3.6, -4.0],
+    },
+    Aabb {
+        min: [19.0, 0.0, -22.0],
+        max: [24.0, 4.5, -5.0],
+    },
+    Aabb {
+        min: [19.0, 0.0, 3.0],
+        max: [24.0, 4.5, 22.0],
+    },
+    Aabb {
+        min: [8.0, 0.0, -22.0],
+        max: [19.0, 3.6, -20.0],
+    },
+    Aabb {
+        min: [8.0, 0.0, -14.0],
+        max: [19.0, 3.6, -12.0],
+    },
+    Aabb {
+        min: [8.0, 0.0, -6.0],
+        max: [19.0, 3.6, -4.0],
+    },
+    Aabb {
+        min: [-5.0, 0.0, -8.0],
+        max: [-1.0, 1.3, -2.0],
+    },
+    Aabb {
+        min: [1.0, 0.0, 2.0],
+        max: [5.0, 1.3, 8.0],
+    },
+    Aabb {
+        min: [-12.0, 0.0, 9.0],
+        max: [-5.0, 2.4, 12.0],
+    },
+    Aabb {
+        min: [5.0, 0.0, 9.0],
+        max: [12.0, 2.4, 12.0],
+    },
+    Aabb {
+        min: [-11.0, 0.0, 21.0],
+        max: [-3.0, 1.4, 24.0],
+    },
+    Aabb {
+        min: [3.0, 0.0, 21.0],
+        max: [11.0, 1.4, 24.0],
+    },
+    Aabb {
+        min: [-11.0, 0.0, -24.0],
+        max: [-3.0, 1.4, -21.0],
+    },
+    Aabb {
+        min: [3.0, 0.0, -24.0],
+        max: [11.0, 1.4, -21.0],
+    },
 ];
 
 pub struct Collision {
@@ -76,21 +141,53 @@ impl Collision {
         pos[0] += vel[0] * dt;
         for w in &self.walls {
             if overlaps(pos[0], pos[1], pos[2], half_w, height, w) {
-                pos[0] = if vel[0] > 0.0 { w.min[0] - half_w } else { w.max[0] + half_w };
+                pos[0] = if vel[0] > 0.0 {
+                    w.min[0] - half_w
+                } else {
+                    w.max[0] + half_w
+                };
                 vel[0] = 0.0;
             }
         }
-        pos[0] = clamp(pos[0], self.bounds.min[0] + half_w, self.bounds.max[0] - half_w);
+        let min_x = self.bounds.min[0] + half_w;
+        let max_x = self.bounds.max[0] - half_w;
+        if pos[0] < min_x {
+            pos[0] = min_x;
+            if vel[0] < 0.0 {
+                vel[0] = 0.0;
+            }
+        } else if pos[0] > max_x {
+            pos[0] = max_x;
+            if vel[0] > 0.0 {
+                vel[0] = 0.0;
+            }
+        }
 
         // Z 轴
         pos[2] += vel[2] * dt;
         for w in &self.walls {
             if overlaps(pos[0], pos[1], pos[2], half_w, height, w) {
-                pos[2] = if vel[2] > 0.0 { w.min[2] - half_w } else { w.max[2] + half_w };
+                pos[2] = if vel[2] > 0.0 {
+                    w.min[2] - half_w
+                } else {
+                    w.max[2] + half_w
+                };
                 vel[2] = 0.0;
             }
         }
-        pos[2] = clamp(pos[2], self.bounds.min[2] + half_w, self.bounds.max[2] - half_w);
+        let min_z = self.bounds.min[2] + half_w;
+        let max_z = self.bounds.max[2] - half_w;
+        if pos[2] < min_z {
+            pos[2] = min_z;
+            if vel[2] < 0.0 {
+                vel[2] = 0.0;
+            }
+        } else if pos[2] > max_z {
+            pos[2] = max_z;
+            if vel[2] > 0.0 {
+                vel[2] = 0.0;
+            }
+        }
 
         // Y 轴（地面）
         pos[1] += vel[1] * dt;
@@ -113,6 +210,17 @@ fn overlaps(x: f32, y: f32, z: f32, half_w: f32, height: f32, w: &Aabb) -> bool 
         && z - half_w < w.max[2]
 }
 
-fn clamp(v: f32, min: f32, max: f32) -> f32 {
-    v.max(min).min(max)
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn arena_bounds_clear_outward_velocity() {
+        let collision = Collision::default();
+        let mut pos = [ARENA_BOUNDS.max[0] - 0.32, 0.0, 0.0];
+        let mut vel = [8.0, 0.0, 0.0];
+        collision.step(&mut pos, &mut vel, 1.0 / 64.0, 0.32, 1.8);
+        assert_eq!(pos[0], ARENA_BOUNDS.max[0] - 0.32);
+        assert_eq!(vel[0], 0.0);
+    }
 }

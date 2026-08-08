@@ -5,6 +5,9 @@ pub const WEAPON_R1: u32 = 1; // 步枪
 pub const WEAPON_P9: u32 = 2; // 手枪
 pub const WEAPON_S4: u32 = 3; // 冲锋枪
 pub const WEAPON_M1: u32 = 4; // 狙击枪
+pub const WEAPON_KNIFE: u32 = 5; // 战术刀
+pub const WEAPON_M4_PINK: u32 = 6; // 粉色 M4
+pub const WEAPON_LASER_CANNON: u32 = 7; // 激光炮
 
 #[derive(Clone, Copy)]
 pub struct WeaponSpec {
@@ -20,6 +23,8 @@ pub struct WeaponSpec {
     pub falloff_start_m: f32,
     pub falloff_end_m: f32,
     pub falloff_min: f32,
+    pub max_range_m: f32,
+    pub melee: bool,
     #[allow(dead_code)]
     pub automatic: bool,
 }
@@ -38,6 +43,8 @@ pub fn get_weapon(id: u32) -> WeaponSpec {
             falloff_start_m: 15.0,
             falloff_end_m: 45.0,
             falloff_min: 0.55,
+            max_range_m: 80.0,
+            melee: false,
             automatic: true,
         },
         WEAPON_P9 => WeaponSpec {
@@ -52,6 +59,8 @@ pub fn get_weapon(id: u32) -> WeaponSpec {
             falloff_start_m: 10.0,
             falloff_end_m: 35.0,
             falloff_min: 0.6,
+            max_range_m: 50.0,
+            melee: false,
             automatic: false,
         },
         WEAPON_S4 => WeaponSpec {
@@ -66,6 +75,8 @@ pub fn get_weapon(id: u32) -> WeaponSpec {
             falloff_start_m: 8.0,
             falloff_end_m: 25.0,
             falloff_min: 0.65,
+            max_range_m: 40.0,
+            melee: false,
             automatic: true,
         },
         WEAPON_M1 => WeaponSpec {
@@ -80,6 +91,56 @@ pub fn get_weapon(id: u32) -> WeaponSpec {
             falloff_start_m: 25.0,
             falloff_end_m: 90.0,
             falloff_min: 0.8,
+            max_range_m: 120.0,
+            melee: false,
+            automatic: false,
+        },
+        WEAPON_KNIFE => WeaponSpec {
+            id: WEAPON_KNIFE,
+            damage: 55.0,
+            fire_interval_ms: 800,
+            mag_size: 0,
+            reserve: 0,
+            reload_ms: 0,
+            headshot_mult: 1.0,
+            leg_mult: 1.0,
+            falloff_start_m: 0.0,
+            falloff_end_m: 2.2,
+            falloff_min: 1.0,
+            max_range_m: 2.2,
+            melee: true,
+            automatic: false,
+        },
+        WEAPON_M4_PINK => WeaponSpec {
+            id: WEAPON_M4_PINK,
+            damage: 34.0,
+            fire_interval_ms: 83,
+            mag_size: 30,
+            reserve: 90,
+            reload_ms: 2100,
+            headshot_mult: 4.0,
+            leg_mult: 0.75,
+            falloff_start_m: 16.0,
+            falloff_end_m: 48.0,
+            falloff_min: 0.56,
+            max_range_m: 82.0,
+            melee: false,
+            automatic: true,
+        },
+        WEAPON_LASER_CANNON => WeaponSpec {
+            id: WEAPON_LASER_CANNON,
+            damage: 48.0,
+            fire_interval_ms: 333,
+            mag_size: 10,
+            reserve: 40,
+            reload_ms: 2800,
+            headshot_mult: 4.5,
+            leg_mult: 0.85,
+            falloff_start_m: 30.0,
+            falloff_end_m: 110.0,
+            falloff_min: 0.82,
+            max_range_m: 120.0,
+            melee: false,
             automatic: false,
         },
         _ => get_weapon(WEAPON_R1),
@@ -99,6 +160,25 @@ pub const PLANT_BONUS: u32 = 300;
 pub const DEFUSE_BONUS: u32 = 300;
 pub const MAX_GRENADES_PER_TYPE: u32 = 3;
 
+// ---------- 激光炮蓄力 ----------
+
+/// 激光炮从按下到满蓄力的时间。
+pub const LASER_CHARGE_MAX_MS: u32 = 800;
+/// 释放开火所需的最短蓄力时间。
+pub const LASER_CHARGE_MIN_MS: u32 = 150;
+/// 最短蓄力下的伤害占比。
+pub const LASER_CHARGE_MIN_RATIO: f32 = 0.35;
+
+/// 蓄力比例 → 伤害倍率（0.35 ~ 1.0）。
+pub fn laser_damage_ratio(charge_ticks: u32, min_ticks: u32, max_ticks: u32) -> f32 {
+    if max_ticks <= min_ticks {
+        return 1.0;
+    }
+    let t = ((charge_ticks.saturating_sub(min_ticks)) as f32 / (max_ticks - min_ticks) as f32)
+        .clamp(0.0, 1.0);
+    LASER_CHARGE_MIN_RATIO + (1.0 - LASER_CHARGE_MIN_RATIO) * t
+}
+
 // ---------- 商店（购买/退款，WEAPON-001 配置版本化） ----------
 
 pub const SHOP_ARMOR: u8 = 1;
@@ -108,6 +188,8 @@ pub const SHOP_SNIPER: u8 = 4;
 pub const SHOP_SMOKE: u8 = 5;
 pub const SHOP_FLASH: u8 = 6;
 pub const SHOP_HE: u8 = 7;
+pub const SHOP_M4_PINK: u8 = 8;
+pub const SHOP_LASER_CANNON: u8 = 9;
 
 #[derive(Clone, Copy)]
 pub enum ShopKind {
@@ -125,14 +207,61 @@ pub struct ShopItem {
     pub name: &'static str,
 }
 
-pub const SHOP_ITEMS: [ShopItem; 7] = [
-    ShopItem { id: SHOP_ARMOR, kind: ShopKind::Armor, cost: 650, name: "护甲" },
-    ShopItem { id: SHOP_RIFLE, kind: ShopKind::Weapon(WEAPON_R1), cost: 2700, name: "步枪 R1" },
-    ShopItem { id: SHOP_SMG, kind: ShopKind::Weapon(WEAPON_S4), cost: 1700, name: "冲锋枪 S4" },
-    ShopItem { id: SHOP_SNIPER, kind: ShopKind::Weapon(WEAPON_M1), cost: 4750, name: "狙击枪 M1" },
-    ShopItem { id: SHOP_SMOKE, kind: ShopKind::Grenade(crate::protocol::GRENADE_SMOKE), cost: 300, name: "烟雾弹" },
-    ShopItem { id: SHOP_FLASH, kind: ShopKind::Grenade(crate::protocol::GRENADE_FLASH), cost: 200, name: "闪光弹" },
-    ShopItem { id: SHOP_HE, kind: ShopKind::Grenade(crate::protocol::GRENADE_HE), cost: 300, name: "高爆手雷" },
+pub const SHOP_ITEMS: [ShopItem; 9] = [
+    ShopItem {
+        id: SHOP_ARMOR,
+        kind: ShopKind::Armor,
+        cost: 650,
+        name: "护甲",
+    },
+    ShopItem {
+        id: SHOP_RIFLE,
+        kind: ShopKind::Weapon(WEAPON_R1),
+        cost: 2700,
+        name: "步枪 R1",
+    },
+    ShopItem {
+        id: SHOP_SMG,
+        kind: ShopKind::Weapon(WEAPON_S4),
+        cost: 1700,
+        name: "冲锋枪 S4",
+    },
+    ShopItem {
+        id: SHOP_SNIPER,
+        kind: ShopKind::Weapon(WEAPON_M1),
+        cost: 4750,
+        name: "狙击枪 M1",
+    },
+    ShopItem {
+        id: SHOP_SMOKE,
+        kind: ShopKind::Grenade(crate::protocol::GRENADE_SMOKE),
+        cost: 300,
+        name: "烟雾弹",
+    },
+    ShopItem {
+        id: SHOP_FLASH,
+        kind: ShopKind::Grenade(crate::protocol::GRENADE_FLASH),
+        cost: 200,
+        name: "闪光弹",
+    },
+    ShopItem {
+        id: SHOP_HE,
+        kind: ShopKind::Grenade(crate::protocol::GRENADE_HE),
+        cost: 300,
+        name: "高爆手雷",
+    },
+    ShopItem {
+        id: SHOP_M4_PINK,
+        kind: ShopKind::Weapon(WEAPON_M4_PINK),
+        cost: 3200,
+        name: "M4 粉色",
+    },
+    ShopItem {
+        id: SHOP_LASER_CANNON,
+        kind: ShopKind::Weapon(WEAPON_LASER_CANNON),
+        cost: 6200,
+        name: "激光炮",
+    },
 ];
 
 pub fn shop_item(id: u8) -> Option<&'static ShopItem> {

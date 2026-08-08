@@ -50,13 +50,25 @@ pub fn step_grenade(g: &mut Grenade, dt: f32, walls: &[Aabb]) -> bool {
             let dy = (g.pos[1] - cy).abs();
             let dz = (g.pos[2] - cz).abs();
             if dx >= dy && dx >= dz {
-                g.pos[0] = if g.pos[0] < cx { w.min[0] - GRENADE_RADIUS } else { w.max[0] + GRENADE_RADIUS };
+                g.pos[0] = if g.pos[0] < cx {
+                    w.min[0] - GRENADE_RADIUS
+                } else {
+                    w.max[0] + GRENADE_RADIUS
+                };
                 g.vel[0] = -g.vel[0] * RESTITUTION;
             } else if dy >= dx && dy >= dz {
-                g.pos[1] = if g.pos[1] < cy { w.min[1] - GRENADE_RADIUS } else { w.max[1] + GRENADE_RADIUS };
+                g.pos[1] = if g.pos[1] < cy {
+                    w.min[1] - GRENADE_RADIUS
+                } else {
+                    w.max[1] + GRENADE_RADIUS
+                };
                 g.vel[1] = -g.vel[1] * RESTITUTION;
             } else {
-                g.pos[2] = if g.pos[2] < cz { w.min[2] - GRENADE_RADIUS } else { w.max[2] + GRENADE_RADIUS };
+                g.pos[2] = if g.pos[2] < cz {
+                    w.min[2] - GRENADE_RADIUS
+                } else {
+                    w.max[2] + GRENADE_RADIUS
+                };
                 g.vel[2] = -g.vel[2] * RESTITUTION;
             }
         }
@@ -78,7 +90,7 @@ pub fn step_grenade(g: &mut Grenade, dt: f32, walls: &[Aabb]) -> bool {
     for i in 0..3 {
         if g.pos[i] < ARENA_BOUNDS.min[i] {
             g.pos[i] = ARENA_BOUNDS.min[i];
-            g.vel[i] = -g.vel[i].abs() * RESTITUTION;
+            g.vel[i] = g.vel[i].abs() * RESTITUTION;
         } else if g.pos[i] > ARENA_BOUNDS.max[i] {
             g.pos[i] = ARENA_BOUNDS.max[i];
             g.vel[i] = -g.vel[i].abs() * RESTITUTION;
@@ -91,12 +103,14 @@ pub fn step_grenade(g: &mut Grenade, dt: f32, walls: &[Aabb]) -> bool {
     } else {
         g.rest_ticks = 0;
     }
-    let speed = (g.vel[0] * g.vel[0] + g.vel[1] * g.vel[1] + g.vel[2] * g.vel[2]).sqrt();
-    g.age_ticks >= g.fuse_total || (g.rest_ticks >= 12 && speed < 1.5)
+    g.age_ticks >= g.fuse_total
 }
 
 pub fn point_in_aabb(p: [f32; 3], aabb: &Aabb) -> bool {
-    p[0] > aabb.min[0] && p[0] < aabb.max[0]
-        && p[1] > aabb.min[1] && p[1] < aabb.max[1]
-        && p[2] > aabb.min[2] && p[2] < aabb.max[2]
+    p[0] > aabb.min[0]
+        && p[0] < aabb.max[0]
+        && p[1] > aabb.min[1]
+        && p[1] < aabb.max[1]
+        && p[2] > aabb.min[2]
+        && p[2] < aabb.max[2]
 }
