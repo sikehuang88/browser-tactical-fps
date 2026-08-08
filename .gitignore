@@ -24,6 +24,9 @@ backend/bin/
 *.pem
 *.key
 
+# 本地运行数据（SQLite）
+backend/data/
+
 # Editor / OS
 .vscode/
 .idea/
