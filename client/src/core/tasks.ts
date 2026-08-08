@@ -46,7 +46,7 @@ const DEVICE_KEY = 'fps_guest_device_v1'
 
 function apiBase(): string {
   const configured = import.meta.env.VITE_BACKEND_URL as string | undefined
-  return (configured || 'http://127.0.0.1:8080').replace(/\/$/, '')
+  return (configured || 'http://127.0.0.1:18080').replace(/\/$/, '')
 }
 
 function deviceId(): string {

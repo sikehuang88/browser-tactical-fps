@@ -59,10 +59,9 @@ cd client && npm run dev                  # 终端 B：浏览器客户端
 
 ```bash
 cd backend
-go run ./cmd/api --addr :8080
-# 默认内存 store，无需数据库即可跑通
-curl http://localhost:8080/healthz
-curl -X POST http://localhost:8080/api/v1/auth/guest
+go run ./cmd/api --addr :18080
+curl http://localhost:18080/healthz
+curl -X POST http://localhost:18080/api/v1/auth/guest
 ```
 
 可选环境变量：`FPSWEB_ALLOWED_ORIGINS`（逗号分隔的前端来源白名单，默认本地开发地址），生产部署请显式配置。

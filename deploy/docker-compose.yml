@@ -7,9 +7,9 @@ services:
   backend:
     build:
       context: ../backend
-    command: ["api", "--addr", ":8080", "--db", "/data/fpsweb.db"]
+    command: ["api", "--addr", ":18080", "--db", "/data/fpsweb.db"]
     ports:
-      - "8080:8080"
+      - "18080:18080"
     volumes:
       - backend-data:/data
 

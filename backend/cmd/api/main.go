@@ -18,7 +18,7 @@ import (
 )
 
 func main() {
-	addr := flag.String("addr", ":8080", "监听地址")
+	addr := flag.String("addr", ":18080", "监听地址")
 	dbPath := flag.String("db", "data/fpsweb.db", "SQLite 数据库文件路径")
 	pgDSN := flag.String("pg-dsn", "", "PostgreSQL DSN（当前尚未实现，留空使用 SQLite）")
 	tokenSecret := flag.String("token-secret", "", "令牌签名密钥（留空自动生成随机密钥）")
