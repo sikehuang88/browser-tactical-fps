@@ -206,6 +206,8 @@ impl World {
             } else if movement_allowed {
                 p.apply_gravity(dt, &self.collision);
             }
+            p.tick_stance(dt);
+            p.tick_recoil_recovery(dt, self.tick_rate);
             let entry = self.history.entry(*id).or_default();
             entry.push_back((self.tick, p.pos));
             while entry.len() > 128 {
@@ -297,7 +299,7 @@ impl World {
             .map(|p| PlayerView {
                 id: p.id,
                 pos: p.pos,
-                crouching: p.crouching,
+                height: p.height,
                 yaw: p.yaw,
                 pitch: p.pitch,
                 alive: p.alive,

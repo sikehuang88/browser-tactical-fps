@@ -15,6 +15,8 @@ export interface LocalPlayerState {
   onGround: boolean
   crouching: boolean
   sprinting: boolean
+  /** 当前碰撞高度（下蹲过渡用，1.35..1.8）。 */
+  height: number
   health: number
   weaponId: number
   ammo: number
@@ -47,6 +49,8 @@ const KNIFE_WEAPON_ID = 5
 const LASER_WEAPON_ID = 7
 const LASER_CHARGE_MAX_MS = 800
 const LASER_CHARGE_MIN_MS = 150
+const RECOVERY_DELAY_SECS = 0.18
+const RECOVERY_RATE = 8
 
 export class LocalPlayer {
   state: LocalPlayerState
@@ -96,6 +100,7 @@ export class LocalPlayer {
       onGround: true,
       crouching: false,
       sprinting: false,
+      height: STAND_HEIGHT,
       health: 100,
       weaponId: weapon.id,
       ammo: weapon.ammo,
@@ -118,6 +123,21 @@ export class LocalPlayer {
     this.lastButtons = raw.buttons
     s.yaw = normalizeDeg(s.yaw + raw.yawDelta / 100)
     s.pitch = clamp(s.pitch + raw.pitchDelta / 100, -MAX_PITCH_DEG, MAX_PITCH_DEG)
+    // 手动压枪先抵消后坐力“欠账”，剩余部分才自动回复，避免双重补偿。
+    const pitchInput = raw.pitchDelta / 100
+    const yawInput = raw.yawDelta / 100
+    if (pitchInput < 0 && this.recoilAccumPitch > 0) {
+      this.recoilAccumPitch = Math.max(0, this.recoilAccumPitch + pitchInput)
+    }
+    if (
+      (yawInput < 0 && this.recoilAccumYaw > 0) ||
+      (yawInput > 0 && this.recoilAccumYaw < 0)
+    ) {
+      this.recoilAccumYaw =
+        this.recoilAccumYaw > 0
+          ? Math.max(0, this.recoilAccumYaw + yawInput)
+          : Math.min(0, this.recoilAccumYaw + yawInput)
+    }
     s.aiming = raw.aiming && getWeapon(s.weaponId)?.id === 4
 
     if ((pressed & BUTTON.EQUIP_KNIFE) !== 0) {
@@ -128,8 +148,17 @@ export class LocalPlayer {
       this.switchWeapon(this.firearmWeaponId)
     }
 
-    s.crouching = (raw.buttons & BUTTON.CROUCH) !== 0
-    const height = s.crouching ? CROUCH_HEIGHT : STAND_HEIGHT
+    // 下蹲过渡：0.22s 内平滑切换碰撞高度，避免 hitbox/眼高瞬移。
+    const crouchRequested = (raw.buttons & BUTTON.CROUCH) !== 0
+    const targetHeight = crouchRequested ? CROUCH_HEIGHT : STAND_HEIGHT
+    const stanceRate = (STAND_HEIGHT - CROUCH_HEIGHT) / 0.22
+    s.height = clamp(
+      s.height + clamp(targetHeight - s.height, -stanceRate * dt, stanceRate * dt),
+      CROUCH_HEIGHT,
+      STAND_HEIGHT,
+    )
+    s.crouching = s.height < (STAND_HEIGHT + CROUCH_HEIGHT) * 0.5
+    const height = s.height
 
     let forward = raw.forwardAxis / 127
     let strafe = raw.strafeAxis / 127
@@ -171,6 +200,7 @@ export class LocalPlayer {
     s.onGround = res.onGround
 
     this.updateWeapon(dt, nowMs, raw, pressed)
+    this.tickRecoilRecovery(dt)
   }
 
   renderState(alpha: number): LocalPlayerState {
@@ -213,6 +243,9 @@ export class LocalPlayer {
       s.ammo = weapon.ammo
       s.reloading = false
       this.recoilShotIndex = 0
+      this.recoilAccumPitch = 0
+      this.recoilAccumYaw = 0
+      this.ticksSinceFire = 0
     }
     // 激光炮：按住蓄力、松手释放（伤害由服务器按蓄力比例结算）。
     if (weapon.id === LASER_WEAPON_ID) {
@@ -234,6 +267,9 @@ export class LocalPlayer {
           const kick = recoilForWeapon(weapon.id, this.recoilShotIndex)
           s.pitch = clamp(s.pitch + kick.pitch, -MAX_PITCH_DEG, MAX_PITCH_DEG)
           s.yaw = normalizeDeg(s.yaw + kick.yaw)
+          this.recoilAccumPitch += kick.pitch
+          this.recoilAccumYaw += kick.yaw
+          this.ticksSinceFire = 0
           this.recoilShotIndex += 1
           s.shotsFired += 1
           this.nextFireAtMs = nowMs + 60_000 / weapon.fireRatePerMin
@@ -261,6 +297,9 @@ export class LocalPlayer {
         const kick = recoilForWeapon(weapon.id, this.recoilShotIndex)
         s.pitch = clamp(s.pitch + kick.pitch, -MAX_PITCH_DEG, MAX_PITCH_DEG)
         s.yaw = normalizeDeg(s.yaw + kick.yaw)
+        this.recoilAccumPitch += kick.pitch
+        this.recoilAccumYaw += kick.yaw
+        this.ticksSinceFire = 0
         this.recoilShotIndex += 1
         s.shotsFired += 1
       }
@@ -270,6 +309,9 @@ export class LocalPlayer {
   private nextFireAtMs = 0
   private lastButtons = 0
   private recoilShotIndex = 0
+  private recoilAccumPitch = 0
+  private recoilAccumYaw = 0
+  private ticksSinceFire = 0
 
   syncWeapon(weaponId: number, ammo: number, reloading: boolean): void {
     const s = this.state
@@ -335,11 +377,28 @@ export class LocalPlayer {
     s.charge = 0
     this.nextFireAtMs = 0
     this.recoilShotIndex = 0
+    this.recoilAccumPitch = 0
+    this.recoilAccumYaw = 0
+    this.ticksSinceFire = 0
     s.aiming = false
     if (resolved !== KNIFE_WEAPON_ID) {
       const spec = getWeapon(resolved) ?? getWeapon(DEFAULT_WEAPON_ID)!
       s.ammo = this.ammoByWeaponId.get(resolved) ?? spec.ammo
     }
+  }
+
+  /** 后坐力回复：停火 0.18s 后按指数衰减回到开火前视角（与服务器同参数）。 */
+  private tickRecoilRecovery(dt: number): void {
+    this.ticksSinceFire += 1
+    const delayTicks = Math.max(1, Math.round(RECOVERY_DELAY_SECS * 64))
+    if (this.ticksSinceFire < delayTicks) return
+    const decay = 1 - Math.exp(-dt * RECOVERY_RATE)
+    const dp = this.recoilAccumPitch * decay
+    const dy = this.recoilAccumYaw * decay
+    this.state.pitch = clamp(this.state.pitch - dp, -MAX_PITCH_DEG, MAX_PITCH_DEG)
+    this.state.yaw = normalizeDeg(this.state.yaw - dy)
+    this.recoilAccumPitch -= dp
+    this.recoilAccumYaw -= dy
   }
 }
 

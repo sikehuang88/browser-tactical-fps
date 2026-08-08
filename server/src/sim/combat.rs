@@ -27,7 +27,7 @@ pub struct SmokeBlocker {
 pub struct PlayerView {
     pub id: u32,
     pub pos: [f32; 3],
-    pub crouching: bool,
+    pub height: f32,
     pub yaw: f32,
     pub pitch: f32,
     pub alive: bool,
@@ -142,12 +142,9 @@ fn zone_from_s(s: f32) -> (HitZone, bool) {
     }
 }
 
-fn eye_height(crouching: bool) -> f32 {
-    if crouching {
-        EYE_CROUCH
-    } else {
-        EYE_STAND
-    }
+fn eye_height(height: f32) -> f32 {
+    let t = ((height - CROUCH_HEIGHT) / (STAND_HEIGHT - CROUCH_HEIGHT)).clamp(0.0, 1.0);
+    EYE_CROUCH + (EYE_STAND - EYE_CROUCH) * t
 }
 
 /// 回溯位置：返回 victim 在 target_tick 附近的历史位置（延迟补偿）。
@@ -248,7 +245,7 @@ pub fn fire_hitscan(
     let spec = super::weapon::get_weapon(shooter.weapon_id);
     let origin = [
         shooter.pos[0],
-        shooter.pos[1] + eye_height(shooter.crouching),
+        shooter.pos[1] + eye_height(shooter.height),
         shooter.pos[2],
     ];
     let dir = forward_dir(shooter.yaw, shooter.pitch);
@@ -268,12 +265,7 @@ pub fn fire_hitscan(
 
         let pos = replayed_pos(victim.id, victim.pos, history, target_tick);
         let feet = [pos[0], pos[1], pos[2]];
-        let head_height = if victim.crouching {
-            CROUCH_HEIGHT
-        } else {
-            STAND_HEIGHT
-        };
-        let head = [pos[0], pos[1] + head_height, pos[2]];
+        let head = [pos[0], pos[1] + victim.height, pos[2]];
         let (dist2, s, t) = ray_segment(origin, dir, feet, head);
         if dist2 > HIT_RADIUS * HIT_RADIUS || t > spec.max_range_m {
             continue;
@@ -335,7 +327,11 @@ mod tests {
         PlayerView {
             id,
             pos,
-            crouching,
+            height: if crouching {
+                CROUCH_HEIGHT
+            } else {
+                STAND_HEIGHT
+            },
             yaw: 0.0,
             pitch,
             alive: true,

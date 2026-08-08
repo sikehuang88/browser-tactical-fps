@@ -663,21 +663,24 @@ function firstPersonRotationY(id: GameplayModelId): number {
 }
 
 function computeMuzzleLocal(model: THREE.Group, parent: THREE.Group): THREE.Vector3 | null {
+  parent.updateMatrixWorld(true)
   model.updateMatrixWorld(true)
+  const toLocal = new THREE.Matrix4().copy(parent.matrixWorld).invert()
   let best: THREE.Vector3 | null = null
+  const vertex = new THREE.Vector3()
   model.traverse((object) => {
     if (!(object instanceof THREE.Mesh)) return
     const positions = object.geometry.attributes.position
     if (!positions) return
-    const vertex = new THREE.Vector3()
+    const toParent = new THREE.Matrix4().multiplyMatrices(toLocal, object.matrixWorld)
     for (let i = 0; i < positions.count; i += 1) {
-      vertex.fromBufferAttribute(positions, i).applyMatrix4(object.matrixWorld)
+      vertex.fromBufferAttribute(positions, i).applyMatrix4(toParent)
+      // 在挂点本地空间比较 -Z，避免依赖加载瞬间的世界朝向。
       if (!best || vertex.z < best.z) best = vertex.clone()
     }
   })
   if (!best) return null
-  parent.updateMatrixWorld(true)
-  return parent.worldToLocal(best)
+  return best
 }
 
 function createTargetTexture(): THREE.CanvasTexture {

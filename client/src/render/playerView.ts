@@ -1,6 +1,7 @@
 import * as THREE from 'three'
 import type { LocalPlayerState } from '../prediction/localPlayer'
 import { ARENA_BOUNDS, WALLS, type Aabb } from '../game/map'
+import { getWeapon } from '../game/weapons/registry'
 import {
   createGameplayModel,
   disposeGameplayModel,
@@ -9,12 +10,12 @@ import {
   type GameplayModelId,
 } from './gameplayAssets'
 
-const EYE_STAND = 1.6
-const EYE_CROUCH = 1.2
 const TRACER_LIFETIME_MS = 80
 const TRACER_MAX_DISTANCE = 120
 const LASER_BEAM_LIFETIME_MS = 180
 const SHELL_LIFETIME_MS = 1100
+const BOB_CYCLES_PER_METER = 1.15
+const SWAY_STIFFNESS = 14
 const LOCAL_UP = new THREE.Vector3(0, 1, 0)
 const MUZZLE_FORWARD = new THREE.Vector3(0, 0, -1)
 
@@ -51,6 +52,9 @@ export class PlayerView {
   private lastUpdateMs = 0
   private recoilKick = 0
   private swingStartedAtMs = -Infinity
+  private bobPhase = 0
+  private bobStrength = 0
+  private readonly weaponRotation = new THREE.Quaternion()
   private readonly defaultFov: number
   private readonly effectsQuality: 'low' | 'high'
 
@@ -80,7 +84,7 @@ export class PlayerView {
       : 1
     this.camera.fov += (targetFov - this.camera.fov) * fovT
     this.camera.updateProjectionMatrix()
-    const eye = state.crouching ? EYE_CROUCH : EYE_STAND
+    const eye = 1.2 + ((state.height - 1.35) / 0.45) * 0.4
     this.camera.position.set(state.position.x, state.position.y + eye, state.position.z)
     this.camera.rotation.set(
       THREE.MathUtils.degToRad(state.pitch),
@@ -92,12 +96,20 @@ export class PlayerView {
     this.lastUpdateMs = nowMs
     this.recoilKick *= Math.exp(-dt * 20)
 
-    const bob = state.moveSpeed > 0.1 ? Math.sin(nowMs * 0.008) * 0.012 : 0
+    const bobTarget = state.moveSpeed > 0.1 ? 1 : 0
+    this.bobStrength += (bobTarget - this.bobStrength) * (1 - Math.exp(-dt * 8))
+    this.bobPhase += state.moveSpeed * dt * BOB_CYCLES_PER_METER * Math.PI * 2
+    const bobX = Math.sin(this.bobPhase) * 0.012 * this.bobStrength
+    const bobY = Math.abs(Math.cos(this.bobPhase)) * 0.012 * this.bobStrength
     this.weapon.position.copy(this.camera.position)
     this.weapon.quaternion.copy(this.camera.quaternion)
-    this.weapon.translateX(0.26 + bob)
-    this.weapon.translateY(-0.32 + Math.abs(Math.cos(nowMs * 0.008)) * 0.012)
+    // 武器姿态带一阶滞后，避免“焊在屏幕上”的轻飘感。
+    this.weaponRotation.slerp(this.camera.quaternion, 1 - Math.exp(-dt * SWAY_STIFFNESS))
+    this.weapon.quaternion.copy(this.weaponRotation)
+    this.weapon.translateX(0.26 + bobX)
+    this.weapon.translateY(-0.32 + bobY)
     this.applyViewModelMotion(nowMs)
+    this.applyReloadMotion(state, nowMs)
     this.updateLaserCharge(state, nowMs)
 
     const shots = state.shotsFired
@@ -272,6 +284,19 @@ export class PlayerView {
     }
   }
 
+  /** 换弹过渡表现：下沉 + 侧倾 + 回位（手臂动画接入前的过渡方案）。 */
+  private applyReloadMotion(state: LocalPlayerState, nowMs: number): void {
+    if (!state.reloading || state.weaponId === 5 || state.reloadEndAtMs <= 0) return
+    const weapon = getWeapon(state.weaponId)
+    if (!weapon || weapon.reloadMs <= 0) return
+    const progress = 1 - Math.max(0, state.reloadEndAtMs - nowMs) / weapon.reloadMs
+    if (progress < 0 || progress > 1) return
+    const dip = Math.sin(progress * Math.PI)
+    this.modelMount.position.y -= dip * 0.14
+    this.modelMount.rotation.z += dip * 0.5
+    this.modelMount.rotation.x += dip * 0.25
+  }
+
   private spawnTracer(nowMs: number): void {
     const direction = new THREE.Vector3(0, 0, -1).applyQuaternion(this.camera.quaternion).normalize()
     const origin = this.camera.position.clone()
@@ -359,10 +384,11 @@ export class PlayerView {
     const forward = MUZZLE_FORWARD.clone().applyQuaternion(this.camera.quaternion).normalize()
     const pistol = modelId === 'pistol'
     const sniper = modelId === 'sniper'
-    // 从真实枪模的枪口附近抛壳，保证与可见武器一致。
+    // 抛壳口在机匣/握把附近，不在枪口：取枪口到枪身 45% 处作为基准。
     const ejectLocal = (this.muzzleLocal ?? new THREE.Vector3(0, -0.03, -0.62))
       .clone()
-      .add(new THREE.Vector3(0.06, 0.04, 0.22))
+      .multiplyScalar(0.45)
+      .add(new THREE.Vector3(0.06, 0.04, 0.08))
     this.weapon.updateMatrixWorld(true)
     const origin = this.weapon.localToWorld(ejectLocal)
 
@@ -531,21 +557,24 @@ function firstPersonModelRotationY(id: GameplayModelId): number {
 
 /** 从模型网格中找出最靠前的顶点，换算到 weapon 本地空间作为枪口。 */
 function computeMuzzleLocal(model: THREE.Group, weapon: THREE.Group): THREE.Vector3 | null {
+  weapon.updateMatrixWorld(true)
   model.updateMatrixWorld(true)
+  const toWeaponLocal = new THREE.Matrix4().copy(weapon.matrixWorld).invert()
   let best: THREE.Vector3 | null = null
+  const vertex = new THREE.Vector3()
   model.traverse((object) => {
     if (!(object instanceof THREE.Mesh)) return
     const positions = object.geometry.attributes.position
     if (!positions) return
-    const vertex = new THREE.Vector3()
+    const toLocal = new THREE.Matrix4().multiplyMatrices(toWeaponLocal, object.matrixWorld)
     for (let i = 0; i < positions.count; i += 1) {
-      vertex.fromBufferAttribute(positions, i).applyMatrix4(object.matrixWorld)
+      vertex.fromBufferAttribute(positions, i).applyMatrix4(toLocal)
+      // 在 weapon 本地空间比较 -Z（枪管方向），与加载瞬间玩家朝向无关。
       if (!best || vertex.z < best.z) best = vertex.clone()
     }
   })
   if (!best) return null
-  weapon.updateMatrixWorld(true)
-  return weapon.worldToLocal(best)
+  return best
 }
 
 function traceDistance(origin: THREE.Vector3, direction: THREE.Vector3, maxDistance: number): number {

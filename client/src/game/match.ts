@@ -603,6 +603,7 @@ export class Match {
       onGround: false,
       crouching: false,
       sprinting: false,
+      height: base.height,
       health: 0,
       weaponId: base.weaponId,
       ammo: base.ammo,

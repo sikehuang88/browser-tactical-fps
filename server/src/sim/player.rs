@@ -20,6 +20,9 @@ const AIR_ACCEL: f32 = 8.0;
 const FRICTION: f32 = 22.0;
 const JUMP_VEL: f32 = 5.4;
 const MAX_PITCH_DEG: f32 = 89.0;
+const CROUCH_TRANSITION_SECS: f32 = 0.22;
+const RECOVERY_DELAY_SECS: f32 = 0.18;
+const RECOVERY_RATE: f32 = 8.0;
 
 pub struct Player {
     pub id: u32,
@@ -31,6 +34,10 @@ pub struct Player {
     pub pitch: f32,
     pub on_ground: bool,
     pub crouching: bool,
+    /// 当前碰撞高度（下蹲过渡用，1.35..1.8）。
+    pub height: f32,
+    /// 玩家请求的下蹲目标（由 tick_stance 平滑过渡）。
+    crouch_requested: bool,
     pub sprinting: bool,
     pub health: i16,
     pub team: u8, // 1=attack 2=defend（分配后固定，换边时翻转）
@@ -55,6 +62,9 @@ pub struct Player {
     reload_remaining_ticks: u32,
     pub next_fire_tick: u64,
     recoil_shot_index: u32,
+    recoil_accumulated_pitch: f32,
+    recoil_accumulated_yaw: f32,
+    ticks_since_fire: u32,
     pub charge_ticks: u32,
     pub weapon_refund: Option<(u32, u32)>,
     pending_input: Option<InputFrame>,
@@ -76,6 +86,8 @@ impl Player {
             pitch: 0.0,
             on_ground: true,
             crouching: false,
+            height: STAND_HEIGHT,
+            crouch_requested: false,
             sprinting: false,
             health: 100,
             team: 0,
@@ -98,6 +110,9 @@ impl Player {
             reload_remaining_ticks: 0,
             next_fire_tick: 0,
             recoil_shot_index: 0,
+            recoil_accumulated_pitch: 0.0,
+            recoil_accumulated_yaw: 0.0,
+            ticks_since_fire: 0,
             charge_ticks: 0,
             weapon_refund: None,
             pending_input: None,
@@ -116,6 +131,8 @@ impl Player {
         self.pitch = 0.0;
         self.on_ground = true;
         self.crouching = false;
+        self.height = STAND_HEIGHT;
+        self.crouch_requested = false;
         self.sprinting = false;
         self.health = 100;
         self.alive = true;
@@ -128,6 +145,9 @@ impl Player {
         self.reload_remaining_ticks = 0;
         self.next_fire_tick = 0;
         self.recoil_shot_index = 0;
+        self.recoil_accumulated_pitch = 0.0;
+        self.recoil_accumulated_yaw = 0.0;
+        self.ticks_since_fire = 0;
         self.charge_ticks = 0;
         self.weapon_refund = None;
         self.last_buttons = 0;
@@ -152,6 +172,9 @@ impl Player {
         self.reload_remaining_ticks = 0;
         self.next_fire_tick = 0;
         self.recoil_shot_index = 0;
+        self.recoil_accumulated_pitch = 0.0;
+        self.recoil_accumulated_yaw = 0.0;
+        self.ticks_since_fire = 0;
         self.charge_ticks = 0;
     }
 
@@ -161,6 +184,9 @@ impl Player {
             self.weapon_id = super::weapon::WEAPON_KNIFE;
             self.reloading = false;
             self.reload_remaining_ticks = 0;
+            self.recoil_accumulated_pitch = 0.0;
+            self.recoil_accumulated_yaw = 0.0;
+            self.ticks_since_fire = 0;
             self.charge_ticks = 0;
         } else if pressed & BTN_EQUIP_SECONDARY != 0 {
             self.switch_to_secondary();
@@ -177,6 +203,9 @@ impl Player {
         self.reload_remaining_ticks = 0;
         self.next_fire_tick = 0;
         self.recoil_shot_index = 0;
+        self.recoil_accumulated_pitch = 0.0;
+        self.recoil_accumulated_yaw = 0.0;
+        self.ticks_since_fire = 0;
         self.charge_ticks = 0;
     }
 
@@ -188,6 +217,9 @@ impl Player {
         self.reload_remaining_ticks = 0;
         self.next_fire_tick = 0;
         self.recoil_shot_index = 0;
+        self.recoil_accumulated_pitch = 0.0;
+        self.recoil_accumulated_yaw = 0.0;
+        self.ticks_since_fire = 0;
         self.charge_ticks = 0;
     }
 
@@ -265,13 +297,28 @@ impl Player {
 
     /// 应用视角与下蹲（冻结阶段也可转身）。
     pub fn apply_view(&mut self, input: &InputFrame) {
+        let yaw_input = input.yaw_delta as f32 / 100.0;
+        let pitch_input = input.pitch_delta as f32 / 100.0;
+        // 手动压枪先抵消后坐力“欠账”，剩余部分才自动回复，避免双重补偿。
+        if pitch_input < 0.0 && self.recoil_accumulated_pitch > 0.0 {
+            self.recoil_accumulated_pitch = (self.recoil_accumulated_pitch + pitch_input).max(0.0);
+        }
+        if (yaw_input < 0.0 && self.recoil_accumulated_yaw > 0.0)
+            || (yaw_input > 0.0 && self.recoil_accumulated_yaw < 0.0)
+        {
+            self.recoil_accumulated_yaw = if self.recoil_accumulated_yaw > 0.0 {
+                (self.recoil_accumulated_yaw + yaw_input).max(0.0)
+            } else {
+                (self.recoil_accumulated_yaw + yaw_input).min(0.0)
+            };
+        }
         self.yaw = normalize_deg(self.yaw + input.yaw_delta as f32 / 100.0);
         self.pitch = clamp(
             self.pitch + input.pitch_delta as f32 / 100.0,
             -MAX_PITCH_DEG,
             MAX_PITCH_DEG,
         );
-        self.crouching = input.buttons & BTN_CROUCH != 0;
+        self.crouch_requested = input.buttons & BTN_CROUCH != 0;
     }
 
     /// 一步权威移动。视角已应用，此处仅处理速度/位移/跳跃/重力/碰撞。
@@ -282,12 +329,7 @@ impl Player {
         dt: f32,
         collision: &Collision,
     ) {
-        let height = if self.crouching {
-            CROUCH_HEIGHT
-        } else {
-            STAND_HEIGHT
-        };
-
+        let height = self.height;
         let mut forward = input.forward_axis as f32 / 127.0;
         let mut strafe = input.strafe_axis as f32 / 127.0;
         let input_length = (forward * forward + strafe * strafe).sqrt();
@@ -340,12 +382,38 @@ impl Player {
         (self.vel[0], self.vel[2]) =
             move_toward_2d(self.vel[0], self.vel[2], 0.0, 0.0, FRICTION * dt);
         self.move_speed = (self.vel[0] * self.vel[0] + self.vel[2] * self.vel[2]).sqrt();
-        let height = if self.crouching {
+        let height = self.height;
+        self.on_ground = collision.step(&mut self.pos, &mut self.vel, dt, HALF_W, height);
+    }
+
+    /// 下蹲过渡：0.22s 内平滑切换碰撞高度；crouching 表示实际姿态阈值。
+    pub fn tick_stance(&mut self, dt: f32) {
+        let target = if self.crouch_requested {
             CROUCH_HEIGHT
         } else {
             STAND_HEIGHT
         };
-        self.on_ground = collision.step(&mut self.pos, &mut self.vel, dt, HALF_W, height);
+        let rate = (STAND_HEIGHT - CROUCH_HEIGHT) / CROUCH_TRANSITION_SECS;
+        let max_delta = rate * dt;
+        let delta = (target - self.height).clamp(-max_delta, max_delta);
+        self.height = (self.height + delta).clamp(CROUCH_HEIGHT, STAND_HEIGHT);
+        self.crouching = self.height < (STAND_HEIGHT + CROUCH_HEIGHT) * 0.5;
+    }
+
+    /// 后坐力回复：停火 0.18s 后按指数衰减回到开火前视角。
+    pub fn tick_recoil_recovery(&mut self, dt: f32, tick_rate: u32) {
+        self.ticks_since_fire = self.ticks_since_fire.saturating_add(1);
+        let delay_ticks = (RECOVERY_DELAY_SECS * tick_rate as f32).max(1.0) as u32;
+        if self.ticks_since_fire < delay_ticks {
+            return;
+        }
+        let decay = 1.0 - (-dt * RECOVERY_RATE).exp();
+        let dp = self.recoil_accumulated_pitch * decay;
+        let dy = self.recoil_accumulated_yaw * decay;
+        self.pitch = clamp(self.pitch - dp, -MAX_PITCH_DEG, MAX_PITCH_DEG);
+        self.yaw = normalize_deg(self.yaw - dy);
+        self.recoil_accumulated_pitch -= dp;
+        self.recoil_accumulated_yaw -= dy;
     }
 
     // ---------- 武器状态 ----------
@@ -363,6 +431,9 @@ impl Player {
         let (pitch, yaw) = recoil_for_weapon(self.weapon_id, self.recoil_shot_index);
         self.pitch = clamp(self.pitch + pitch, -MAX_PITCH_DEG, MAX_PITCH_DEG);
         self.yaw = normalize_deg(self.yaw + yaw);
+        self.recoil_accumulated_pitch += pitch;
+        self.recoil_accumulated_yaw += yaw;
+        self.ticks_since_fire = 0;
         self.recoil_shot_index = self.recoil_shot_index.wrapping_add(1);
         self.next_fire_tick = tick + interval_ticks.max(1);
     }
@@ -379,6 +450,9 @@ impl Player {
                 self.store_active_ammo();
                 self.reloading = false;
                 self.recoil_shot_index = 0;
+                self.recoil_accumulated_pitch = 0.0;
+                self.recoil_accumulated_yaw = 0.0;
+                self.ticks_since_fire = 0;
             }
         }
     }
@@ -562,5 +636,39 @@ mod tests {
         player.apply_weapon_switch(BTN_EQUIP_SECONDARY);
         assert_eq!(player.weapon_id, super::super::weapon::WEAPON_P9);
         assert_eq!(player.ammo, 9);
+    }
+
+    #[test]
+    fn recoil_recovers_after_fire_stops() {
+        let mut player = Player::new(1, "player".into(), [0.0, 0.0, 0.0]);
+        player.weapon_id = super::super::weapon::WEAPON_P9;
+        player.record_fire(0, 10, true);
+        let pitch_after = player.pitch;
+        assert!(pitch_after > 0.0);
+
+        for _ in 0..96 {
+            player.tick_recoil_recovery(1.0 / 64.0, 64);
+        }
+        assert!(
+            player.pitch < pitch_after * 0.3,
+            "后坐力未回复: pitch={} after={}",
+            player.pitch,
+            pitch_after
+        );
+    }
+
+    #[test]
+    fn crouch_transition_smooths_height() {
+        let mut player = Player::new(1, "player".into(), [0.0, 0.0, 0.0]);
+        assert_eq!(player.height, STAND_HEIGHT);
+
+        player.crouch_requested = true;
+        player.tick_stance(1.0 / 64.0);
+        assert!(player.height < STAND_HEIGHT && player.height > CROUCH_HEIGHT);
+
+        for _ in 0..64 {
+            player.tick_stance(1.0 / 64.0);
+        }
+        assert!((player.height - CROUCH_HEIGHT).abs() < 0.001);
     }
 }
