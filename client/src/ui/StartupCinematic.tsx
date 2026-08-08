@@ -25,7 +25,7 @@ export function StartupCinematic({ onComplete }: { onComplete: (username: string
   return (
     <main className="startup-cinematic" aria-label="启动界面">
       <div
-        className="startup-poster"
+        className="startup-poster startup-cg-anim"
         style={{ backgroundImage: `url(${STARTUP_POSTER})` }}
         aria-hidden="true"
       />

@@ -3803,6 +3803,29 @@ code {
   background: #050708;
 }
 
+.startup-poster {
+  position: absolute;
+  inset: 0;
+  background-size: cover;
+  background-position: center;
+}
+
+/* 轻量开场 CG：海报缓慢推拉 + 亮度渐变，替代已移除的重视频。 */
+.startup-cg-anim {
+  animation: startup-ken-burns 22s ease-in-out infinite alternate;
+}
+
+@keyframes startup-ken-burns {
+  0% {
+    transform: scale(1.02) translate(0, 0);
+    filter: brightness(0.72) saturate(0.85);
+  }
+  100% {
+    transform: scale(1.14) translate(-1.5%, -2%);
+    filter: brightness(1.02) saturate(1.1);
+  }
+}
+
 .startup-shade {
   position: absolute;
   inset: 0;

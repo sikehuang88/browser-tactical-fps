@@ -1,5 +1,6 @@
 import * as THREE from 'three'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
+import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js'
 import { clone as cloneSkeleton } from 'three/examples/jsm/utils/SkeletonUtils.js'
 import type { GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js'
 
@@ -29,6 +30,12 @@ const ASSET_URLS: Record<OperatorId, string> = {
   sentinel: '/assets/characters/operator-sentinel.glb',
 }
 
+const draco = new DRACOLoader()
+draco.setDecoderPath('/draco/gltf/')
+draco.preload()
+const loader = new GLTFLoader()
+loader.setDRACOLoader(draco)
+
 const assetCache = new Map<OperatorId, Promise<CharacterAsset>>()
 
 /** Load one rigged operator and normalize its floor height to the game world. */
@@ -36,7 +43,7 @@ export function loadOperatorAsset(id: OperatorId): Promise<CharacterAsset> {
   const cached = assetCache.get(id)
   if (cached) return cached
 
-  const promise = new GLTFLoader()
+  const promise = loader
     .loadAsync(ASSET_URLS[id])
     .then((gltf) => prepareAsset(id, gltf))
     .catch((error) => {
