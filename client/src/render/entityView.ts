@@ -10,6 +10,8 @@ import {
   type OperatorId,
 } from './characterAssets'
 import { createGameplayModel, disposeGameplayModel, gameplayModelForWeapon, gameplayModelRotationY, type GameplayModelId } from './gameplayAssets'
+import { ShaderTracerStyle, TracerSystem, type TracerSpawn } from './tracers'
+import { traceDistance } from './trace'
 
 interface PlayerRender {
   group: THREE.Group
@@ -27,8 +29,20 @@ export class EntityView {
   private readonly players = new Map<number, PlayerRender>()
   private readonly assets = new Map<OperatorId, CharacterAsset>()
   private readonly weaponAssets = new Map<GameplayModelId, THREE.Group>()
+  private teammateTracers: TracerSystem
+  private enemyTracers: TracerSystem
+  private readonly lastAmmo = new Map<number, number>()
+  private readonly pendingRemoteTracers: Array<{ spawn: TracerSpawn; team: number; atMs: number }> = []
 
   constructor(private readonly scene: THREE.Scene) {
+    this.teammateTracers = new TracerSystem(
+      scene,
+      new ShaderTracerStyle({ coreColor: 0xe8f6ff, glowColor: 0x7ec8ff }),
+    )
+    this.enemyTracers = new TracerSystem(
+      scene,
+      new ShaderTracerStyle({ coreColor: 0xffd9cf, glowColor: 0xff7a5c }),
+    )
     for (const id of ['vanguard', 'sentinel'] as const) {
       void loadOperatorAsset(id)
         .then((asset) => this.assets.set(id, asset))
@@ -43,10 +57,13 @@ export class EntityView {
 
   update(entities: EntitySnapshot[], localId: number, deltaSeconds = 1 / 60): void {
     const seen = new Set<number>()
+    const nowMs = performance.now()
+    const localTeam = entities.find((entity) => entity.id === localId)?.team ?? 0
 
     for (const entity of entities) {
       if (entity.id === localId || entity.health <= 0) continue
       seen.add(entity.id)
+      this.detectRemoteShots(entity, localTeam, nowMs)
 
       const operatorId = operatorForTeam(entity.team)
       let player = this.players.get(entity.id)
@@ -84,6 +101,16 @@ export class EntityView {
       this.scene.remove(player.group)
       this.players.delete(id)
     }
+
+    for (let i = this.pendingRemoteTracers.length - 1; i >= 0; i -= 1) {
+      const pending = this.pendingRemoteTracers[i]
+      if (pending.atMs > nowMs) continue
+      const system = pending.team === localTeam ? this.teammateTracers : this.enemyTracers
+      system.spawn(pending.spawn, nowMs)
+      this.pendingRemoteTracers.splice(i, 1)
+    }
+    this.teammateTracers.update(nowMs)
+    this.enemyTracers.update(nowMs)
   }
 
   clear(): void {
@@ -92,6 +119,45 @@ export class EntityView {
       this.scene.remove(player.group)
     }
     this.players.clear()
+    this.teammateTracers.dispose()
+    this.enemyTracers.dispose()
+    this.teammateTracers = new TracerSystem(
+      this.scene,
+      new ShaderTracerStyle({ coreColor: 0xe8f6ff, glowColor: 0x7ec8ff }),
+    )
+    this.enemyTracers = new TracerSystem(
+      this.scene,
+      new ShaderTracerStyle({ coreColor: 0xffd9cf, glowColor: 0xff7a5c }),
+    )
+    this.lastAmmo.clear()
+    this.pendingRemoteTracers.length = 0
+  }
+
+  /** 快照推断开火：弹药数下降即为射击（方案 A，无需改协议）。 */
+  private detectRemoteShots(entity: EntitySnapshot, localTeam: number, nowMs: number): void {
+    const previous = this.lastAmmo.get(entity.id)
+    this.lastAmmo.set(entity.id, entity.ammo)
+    if (previous === undefined) return
+    const fired = previous - entity.ammo
+    if (fired <= 0 || fired > 4) return
+
+    const eyeY = entity.position.y + (entity.crouching ? 1.2 : 1.6)
+    const origin = new THREE.Vector3(entity.position.x, eyeY, entity.position.z)
+    const direction = forwardFromAngles(entity.yaw, entity.pitch)
+    const distance = traceDistance(origin, direction, 120)
+    const impact = origin.clone().addScaledVector(direction, distance)
+    const system = entity.team === localTeam ? this.teammateTracers : this.enemyTracers
+
+    for (let i = 0; i < fired; i += 1) {
+      const spawn: TracerSpawn = {
+        muzzle: origin.clone(),
+        impact: impact.clone(),
+        weaponId: entity.weaponId,
+        local: false,
+      }
+      if (i === 0) system.spawn(spawn, nowMs)
+      else this.pendingRemoteTracers.push({ spawn, team: entity.team, atMs: nowMs + i * 40 })
+    }
   }
 
   private createPlayer(operatorId: OperatorId, team: number): PlayerRender {
@@ -209,6 +275,14 @@ function operatorForTeam(team: number): OperatorId {
 
 function teamColor(team: number): THREE.Color {
   return new THREE.Color(TEAM_COLORS[team] ?? TEAM_COLORS[0])
+}
+
+/** 与服务器 combat.rs forward_dir 完全一致。 */
+function forwardFromAngles(yawDeg: number, pitchDeg: number): THREE.Vector3 {
+  const y = THREE.MathUtils.degToRad(yawDeg)
+  const p = THREE.MathUtils.degToRad(pitchDeg)
+  const cp = Math.cos(p)
+  return new THREE.Vector3(-Math.sin(y) * cp, Math.sin(p), -Math.cos(y) * cp)
 }
 
 function createTeamIndicator(team: number): THREE.Mesh<THREE.RingGeometry, THREE.MeshBasicMaterial> {

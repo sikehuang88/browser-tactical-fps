@@ -1,6 +1,5 @@
 import * as THREE from 'three'
 import type { LocalPlayerState } from '../prediction/localPlayer'
-import { ARENA_BOUNDS, WALLS, type Aabb } from '../game/map'
 import { getWeapon } from '../game/weapons/registry'
 import {
   createGameplayModel,
@@ -9,8 +8,9 @@ import {
   gameplayModelRotationY,
   type GameplayModelId,
 } from './gameplayAssets'
+import { traceDistance } from './trace'
+import { ShaderTracerStyle, TracerSystem, WhipTracerStyle } from './tracers'
 
-const TRACER_LIFETIME_MS = 80
 const TRACER_MAX_DISTANCE = 120
 const LASER_BEAM_LIFETIME_MS = 180
 const SHELL_LIFETIME_MS = 1100
@@ -38,7 +38,8 @@ export class PlayerView {
   private readonly weapon = new THREE.Group()
   private readonly modelMount = new THREE.Group()
   private readonly fallback = buildFallbackModel()
-  private readonly tracers: { mesh: THREE.Mesh; expiresAtMs: number; lifetimeMs: number }[] = []
+  private readonly laserBeams: { mesh: THREE.Mesh; expiresAtMs: number; lifetimeMs: number }[] = []
+  private readonly tracerSystem: TracerSystem
   private readonly muzzleEffects: MuzzleEffect[] = []
   private readonly shellCasings: ShellCasing[] = []
   private laserChargeGlow: THREE.Mesh<THREE.SphereGeometry, THREE.MeshBasicMaterial> | null = null
@@ -54,6 +55,8 @@ export class PlayerView {
   private swingStartedAtMs = -Infinity
   private bobPhase = 0
   private bobStrength = 0
+  private tracerCounter = 0
+  private wasReloading = false
   private readonly weaponRotation = new THREE.Quaternion()
   private readonly defaultFov: number
   private readonly effectsQuality: 'low' | 'high'
@@ -65,6 +68,13 @@ export class PlayerView {
   ) {
     this.defaultFov = camera.fov
     this.effectsQuality = options.effectsQuality ?? 'high'
+    // 曳光属于竞技信息：低画质也保留（用更省的 Whip 样式），只削减粒子/抛壳。
+    this.tracerSystem = new TracerSystem(
+      scene,
+      this.effectsQuality === 'low'
+        ? new WhipTracerStyle({ lifetimeMs: 90 })
+        : new ShaderTracerStyle(),
+    )
     this.modelMount.add(this.fallback)
     this.weapon.add(this.modelMount)
     // Keep the viewmodel in the scene graph so WebGLRenderer always traverses
@@ -114,6 +124,8 @@ export class PlayerView {
 
     const shots = state.shotsFired
     if (shots < this.lastShots) this.lastShots = shots
+    if (state.reloading && !this.wasReloading) this.tracerCounter = 0
+    this.wasReloading = state.reloading
     if (shots > this.lastShots) {
       for (let i = 0; i < shots - this.lastShots; i += 1) {
         if (state.weaponId === 5) {
@@ -124,17 +136,20 @@ export class PlayerView {
         } else {
           this.recoilKick = Math.min(0.13, this.recoilKick + 0.055)
           this.spawnMuzzleFlash(nowMs, state.weaponId)
+          if (this.shouldSpawnTracer(state.weaponId)) {
+            this.spawnTracer(nowMs, state.weaponId)
+          }
           if (this.effectsQuality === 'high') {
             this.spawnShellCasing(nowMs, state.weaponId)
-            this.spawnTracer(nowMs)
           }
         }
       }
     }
     this.lastShots = shots
+    this.tracerSystem.update(nowMs)
 
-    for (let i = this.tracers.length - 1; i >= 0; i -= 1) {
-      const tracer = this.tracers[i]
+    for (let i = this.laserBeams.length - 1; i >= 0; i -= 1) {
+      const tracer = this.laserBeams[i]
       const remaining = tracer.expiresAtMs - nowMs
       const material = tracer.mesh.material as THREE.MeshBasicMaterial
       material.opacity = Math.max(0, Math.min(1, remaining / tracer.lifetimeMs))
@@ -142,7 +157,7 @@ export class PlayerView {
         this.scene.remove(tracer.mesh)
         tracer.mesh.geometry.dispose()
         material.dispose()
-        this.tracers.splice(i, 1)
+        this.laserBeams.splice(i, 1)
       }
     }
 
@@ -209,12 +224,13 @@ export class PlayerView {
     this.scene.remove(this.weapon)
     if (this.activeModel) disposeGameplayModel(this.activeModel)
     disposeFallback(this.fallback)
-    for (const tracer of this.tracers) {
+    for (const tracer of this.laserBeams) {
       this.scene.remove(tracer.mesh)
       tracer.mesh.geometry.dispose()
       ;(tracer.mesh.material as THREE.Material).dispose()
     }
-    this.tracers.length = 0
+    this.laserBeams.length = 0
+    this.tracerSystem.dispose()
     this.removeLaserCharge()
     for (const effect of this.muzzleEffects) {
       this.scene.remove(effect.flash, effect.light)
@@ -297,30 +313,26 @@ export class PlayerView {
     this.modelMount.rotation.x += dip * 0.25
   }
 
-  private spawnTracer(nowMs: number): void {
+  private spawnTracer(nowMs: number, weaponId: number): void {
     const direction = new THREE.Vector3(0, 0, -1).applyQuaternion(this.camera.quaternion).normalize()
     const origin = this.camera.position.clone()
     const distance = traceDistance(origin, direction, TRACER_MAX_DISTANCE)
-    const muzzle = this.muzzleWorldPosition()
-    const end = origin.clone().addScaledVector(direction, distance)
-    const segment = end.sub(muzzle)
-    const length = segment.length()
-    if (length < 0.05) return
+    this.tracerSystem.spawn(
+      {
+        muzzle: this.muzzleWorldPosition(),
+        impact: origin.clone().addScaledVector(direction, distance),
+        weaponId,
+        local: true,
+      },
+      nowMs,
+    )
+  }
 
-    const geometry = new THREE.CylinderGeometry(0.012, 0.012, length, 6, 1, true)
-    const material = new THREE.MeshBasicMaterial({
-      color: 0xffe08a,
-      transparent: true,
-      opacity: 0.9,
-      depthWrite: false,
-      blending: THREE.AdditiveBlending,
-    })
-    const mesh = new THREE.Mesh(geometry, material)
-    mesh.position.copy(muzzle).addScaledVector(segment, 0.5)
-    mesh.quaternion.setFromUnitVectors(LOCAL_UP, segment.normalize())
-    mesh.renderOrder = 3
-    this.scene.add(mesh)
-    this.tracers.push({ mesh, expiresAtMs: nowMs + TRACER_LIFETIME_MS, lifetimeMs: TRACER_LIFETIME_MS })
+  /** 弹链节奏：不是每发都带曳光，换弹时计数归零。 */
+  private shouldSpawnTracer(weaponId: number): boolean {
+    const every = { 1: 3, 2: 1, 3: 4, 4: 1, 6: 3, 7: 1 }[weaponId] ?? 1
+    this.tracerCounter += 1
+    return this.tracerCounter % every === 0
   }
 
   private spawnMuzzleFlash(nowMs: number, weaponId: number): void {
@@ -490,7 +502,7 @@ export class PlayerView {
       mesh.quaternion.setFromUnitVectors(LOCAL_UP, segment.clone().normalize())
       mesh.renderOrder = 4
       this.scene.add(mesh)
-      this.tracers.push({
+      this.laserBeams.push({
         mesh,
         expiresAtMs: nowMs + LASER_BEAM_LIFETIME_MS,
         lifetimeMs: LASER_BEAM_LIFETIME_MS,
@@ -575,38 +587,6 @@ function computeMuzzleLocal(model: THREE.Group, weapon: THREE.Group): THREE.Vect
   })
   if (!best) return null
   return best
-}
-
-function traceDistance(origin: THREE.Vector3, direction: THREE.Vector3, maxDistance: number): number {
-  let distance = maxDistance
-  for (const wall of WALLS) {
-    const hit = rayAabbDistance(origin, direction, wall)
-    if (hit !== null && hit > 0.02) distance = Math.min(distance, hit)
-  }
-  const boundaryHit = rayAabbDistance(origin, direction, ARENA_BOUNDS)
-  if (boundaryHit !== null && boundaryHit > 0.02) distance = Math.min(distance, boundaryHit)
-  return distance
-}
-
-function rayAabbDistance(origin: THREE.Vector3, direction: THREE.Vector3, box: Aabb): number | null {
-  let near = -Infinity
-  let far = Infinity
-  for (const axis of ['x', 'y', 'z'] as const) {
-    const directionAxis = direction[axis]
-    const originAxis = origin[axis]
-    if (Math.abs(directionAxis) < 1e-8) {
-      if (originAxis < box.min[axis] || originAxis > box.max[axis]) return null
-      continue
-    }
-    let t1 = (box.min[axis] - originAxis) / directionAxis
-    let t2 = (box.max[axis] - originAxis) / directionAxis
-    if (t1 > t2) [t1, t2] = [t2, t1]
-    near = Math.max(near, t1)
-    far = Math.min(far, t2)
-    if (near > far) return null
-  }
-  if (far < 0) return null
-  return near > 0 ? near : far
 }
 
 function buildFallbackModel(): THREE.Group {
