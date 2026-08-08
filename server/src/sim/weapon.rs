@@ -8,6 +8,7 @@ pub const WEAPON_M1: u32 = 4; // 狙击枪
 pub const WEAPON_KNIFE: u32 = 5; // 战术刀
 pub const WEAPON_M4_PINK: u32 = 6; // 粉色 M4
 pub const WEAPON_LASER_CANNON: u32 = 7; // 激光炮
+pub const WEAPON_GATLING: u32 = 8; // 加特林（重型）
 
 #[derive(Clone, Copy)]
 pub struct WeaponSpec {
@@ -143,6 +144,22 @@ pub fn get_weapon(id: u32) -> WeaponSpec {
             melee: false,
             automatic: false,
         },
+        WEAPON_GATLING => WeaponSpec {
+            id: WEAPON_GATLING,
+            damage: 14.0,
+            fire_interval_ms: 60,
+            mag_size: 80,
+            reserve: 200,
+            reload_ms: 4500,
+            headshot_mult: 3.0,
+            leg_mult: 0.8,
+            falloff_start_m: 12.0,
+            falloff_end_m: 40.0,
+            falloff_min: 0.6,
+            max_range_m: 60.0,
+            melee: false,
+            automatic: true,
+        },
         _ => get_weapon(WEAPON_R1),
     }
 }
@@ -190,6 +207,7 @@ pub const SHOP_FLASH: u8 = 6;
 pub const SHOP_HE: u8 = 7;
 pub const SHOP_M4_PINK: u8 = 8;
 pub const SHOP_LASER_CANNON: u8 = 9;
+pub const SHOP_GATLING: u8 = 10;
 
 #[derive(Clone, Copy)]
 pub enum ShopKind {
@@ -207,7 +225,7 @@ pub struct ShopItem {
     pub name: &'static str,
 }
 
-pub const SHOP_ITEMS: [ShopItem; 9] = [
+pub const SHOP_ITEMS: [ShopItem; 10] = [
     ShopItem {
         id: SHOP_ARMOR,
         kind: ShopKind::Armor,
@@ -261,6 +279,12 @@ pub const SHOP_ITEMS: [ShopItem; 9] = [
         kind: ShopKind::Weapon(WEAPON_LASER_CANNON),
         cost: 6200,
         name: "激光炮",
+    },
+    ShopItem {
+        id: SHOP_GATLING,
+        kind: ShopKind::Weapon(WEAPON_GATLING),
+        cost: 8000,
+        name: "加特林 G8",
     },
 ];
 

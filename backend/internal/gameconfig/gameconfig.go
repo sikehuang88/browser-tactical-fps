@@ -29,6 +29,7 @@ func Default() *Config {
 			{ID: 2, Name: "pistol_p9", DisplayName: "手枪 P9", Category: "pistol", Damage: 26, FireRatePM: 420, Automatic: false},
 			{ID: 3, Name: "smg_s4", DisplayName: "冲锋枪 S4", Category: "smg", Damage: 20, FireRatePM: 800, Automatic: true},
 			{ID: 4, Name: "sniper_m1", DisplayName: "狙击枪 M1", Category: "sniper", Damage: 110, FireRatePM: 40, Automatic: false},
+			{ID: 8, Name: "gatling_g8", DisplayName: "加特林 G8", Category: "rifle", Damage: 14, FireRatePM: 1000, Automatic: true},
 		},
 	}
 }

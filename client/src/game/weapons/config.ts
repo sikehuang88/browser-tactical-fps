@@ -125,6 +125,21 @@ export const WEAPONS: WeaponConfig[] = [
     armorDamageRatio: 900,
     maxRangeM: 120,
   },
+  {
+    id: 8,
+    name: 'gatling_g8',
+    displayName: '加特林 G8',
+    category: 'rifle',
+    damage: 14,
+    fireRatePerMin: 1000,
+    ammo: 80,
+    reserve: 200,
+    reloadMs: 4500,
+    automatic: true,
+    penetrationPower: 75,
+    armorDamageRatio: 800,
+    maxRangeM: 60,
+  },
 ]
 
 export const WEAPON_BY_ID = new Map<number, WeaponConfig>(WEAPONS.map((w) => [w.id, w]))

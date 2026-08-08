@@ -8,11 +8,12 @@
     { "path": "assets/weapons/tactical-knife.glb", "license": "internal", "note": "Draco 压缩；来源凭证待补" },
     { "path": "assets/weapons/m4-pink.glb", "license": "internal", "note": "Draco 压缩；来源凭证待补" },
     { "path": "assets/weapons/laser-cannon.glb", "license": "internal", "note": "Draco 压缩；来源凭证待补" },
+    { "path": "assets/weapons/gatling.glb", "license": "internal", "note": "Draco 压缩；来源凭证待补" },
     { "path": "assets/store/商店军械台.glb", "license": "internal", "note": "Draco 压缩；来源凭证待补" },
     { "path": "assets/store/pbr/", "license": "internal", "note": "来源凭证待补" },
     { "path": "assets/characters/", "license": "internal", "note": "Draco 压缩；来源凭证待补" },
     { "path": "assets/ground/", "license": "internal", "note": "来源凭证待补" },
-    { "path": "assets/hub/base.png", "license": "internal", "note": "来源凭证待补" },
+    { "path": "assets/hub/base.jpg", "license": "internal", "note": "来源凭证待补" },
     { "path": "assets/intro/startup-poster.jpg", "license": "internal", "note": "来源凭证待补" },
     { "path": "assets/throwables/grenade.glb", "license": "internal", "note": "Draco 压缩；来源凭证待补" },
     { "path": "draco/", "license": "Apache-2.0", "source": "https://github.com/google/draco" }

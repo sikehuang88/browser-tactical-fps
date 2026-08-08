@@ -850,7 +850,7 @@ export class Match {
   /** Select a primary weapon in the backpack. 联网/爆破模式走购买契约。 */
   selectPrimaryWeapon(weaponId: number): void {
     if (this.online || this.offlineDemolition) {
-      const itemId = weaponId === 1 ? 2 : weaponId === 3 ? 3 : weaponId === 4 ? 4 : weaponId === 6 ? 8 : weaponId === 7 ? 9 : 0
+      const itemId = weaponId === 1 ? 2 : weaponId === 3 ? 3 : weaponId === 4 ? 4 : weaponId === 6 ? 8 : weaponId === 7 ? 9 : weaponId === 8 ? 10 : 0
       if (itemId !== 0) this.buyItem(itemId)
       return
     }

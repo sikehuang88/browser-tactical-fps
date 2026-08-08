@@ -34,6 +34,7 @@ const FIRST_PERSON_MODEL_CONFIG: Record<GameplayModelId, { scale: number; viewZ:
   // Flip each around Y so the muzzle points toward camera forward (-Z).
   pinkM4: { scale: 0.78, viewZ: -0.60, position: new THREE.Vector3(0, -0.03, 0) },
   laserCannon: { scale: 0.78, viewZ: -0.62, position: new THREE.Vector3(0, -0.05, 0) },
+  gatling: { scale: 0.95, viewZ: -0.52, position: new THREE.Vector3(0, -0.08, 0) },
 }
 
 export class PlayerView {
@@ -335,7 +336,7 @@ export class PlayerView {
 
   /** 弹链节奏：不是每发都带曳光，换弹时计数归零。 */
   private shouldSpawnTracer(weaponId: number): boolean {
-    const every = { 1: 3, 2: 1, 3: 4, 4: 1, 6: 3, 7: 1 }[weaponId] ?? 1
+    const every = { 1: 3, 2: 1, 3: 4, 4: 1, 6: 3, 7: 1, 8: 5 }[weaponId] ?? 1
     this.tracerCounter += 1
     return this.tracerCounter % every === 0
   }

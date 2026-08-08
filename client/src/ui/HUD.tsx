@@ -190,7 +190,7 @@ export function HUD({ match, settings, onExit, buyMenuOpen, onToggleBuy, onBuy, 
                 const spec = getWeapon(id)!
                 const selected = selectedPrimaryId === id
                 const onlineLocked = Boolean((match?.online || demolition) && !inBuyPhase)
-                const code = id === 4 ? 'M1' : id === 6 ? 'M4' : id === 7 ? 'LC' : spec.category === 'smg' ? 'S4' : 'R1'
+                const code = id === 4 ? 'M1' : id === 6 ? 'M4' : id === 7 ? 'LC' : id === 8 ? 'G8' : spec.category === 'smg' ? 'S4' : 'R1'
                 return <button key={id} className={`backpack-weapon ${selected ? 'selected' : ''} ${onlineLocked ? 'locked' : ''}`} disabled={onlineLocked} onClick={() => onSelectPrimary(id)}><div className="backpack-weapon-art"><span>{code}</span></div><div className="backpack-weapon-copy"><strong>{id === 4 ? 'Barrett M1' : spec.displayName}</strong><span>{spec.category.toUpperCase()} · {spec.damage} DMG · {spec.ammo} ROUNDS</span><i><b style={{ width: `${Math.min(100, spec.damage / 1.1)}%` }} /></i></div><div className="backpack-weapon-state">{selected ? <Check size={18} /> : onlineLocked ? <LockKeyhole size={16} /> : <span>装备</span>}</div></button>
               })}
             </div>

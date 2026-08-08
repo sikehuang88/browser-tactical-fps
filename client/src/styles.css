@@ -190,7 +190,7 @@ code {
   z-index: 0;
   background:
     linear-gradient(90deg, rgba(3, 5, 6, 0.56), rgba(3, 5, 6, 0.1) 45%, rgba(3, 5, 6, 0.76)),
-    url('/assets/hub/base.png') center / cover no-repeat;
+    url('/assets/hub/base.jpg') center / cover no-repeat;
   filter: saturate(0.9) contrast(1.08);
   transform: scale(1.03);
 }
@@ -1986,7 +1986,7 @@ code {
   position: absolute;
   inset: 0;
   z-index: 0;
-  background-image: url('/assets/hub/base.png');
+  background-image: url('/assets/hub/base.jpg');
   background-position: center;
   background-size: cover;
   filter: saturate(0.72) contrast(1.06) brightness(0.68);
@@ -3463,7 +3463,7 @@ code {
 
 .hub-map-thumb {
   align-self: stretch;
-  background-image: url('/assets/hub/base.png');
+  background-image: url('/assets/hub/base.jpg');
   background-position: 65% center;
   background-size: cover;
   filter: saturate(0.55) brightness(0.62);

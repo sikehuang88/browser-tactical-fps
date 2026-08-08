@@ -2,7 +2,7 @@ import * as THREE from 'three'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js'
 
-export type GameplayModelId = 'rifle' | 'sniper' | 'pistol' | 'knife' | 'grenade' | 'pinkM4' | 'laserCannon'
+export type GameplayModelId = 'rifle' | 'sniper' | 'pistol' | 'knife' | 'grenade' | 'pinkM4' | 'laserCannon' | 'gatling'
 
 const MODEL_URLS: Record<GameplayModelId, string> = {
   rifle: '/assets/weapons/assault-rifle.glb',
@@ -12,6 +12,7 @@ const MODEL_URLS: Record<GameplayModelId, string> = {
   grenade: '/assets/throwables/grenade.glb',
   pinkM4: '/assets/weapons/m4-pink.glb',
   laserCannon: '/assets/weapons/laser-cannon.glb',
+  gatling: '/assets/weapons/gatling.glb',
 }
 
 const draco = new DRACOLoader()
@@ -63,6 +64,7 @@ export function disposeGameplayModel(instance: THREE.Object3D): void {
 }
 
 export function gameplayModelForWeapon(weaponId: number): GameplayModelId {
+  if (weaponId === 8) return 'gatling'
   if (weaponId === 6) return 'pinkM4'
   if (weaponId === 7) return 'laserCannon'
   if (weaponId === 4) return 'sniper'

@@ -503,6 +503,10 @@ fn recoil_for_weapon(weapon_id: u32, shot_index: u32) -> (f32, f32) {
         super::weapon::WEAPON_LASER_CANNON => {
             (2.25, if n.is_multiple_of(2) { 0.24 } else { -0.24 })
         }
+        super::weapon::WEAPON_GATLING => (
+            [0.45, 0.5, 0.55, 0.6, 0.65, 0.7][n],
+            [0.15, -0.18, 0.2, -0.15, 0.18, -0.12][n],
+        ),
         _ => (0.0, 0.0),
     }
 }

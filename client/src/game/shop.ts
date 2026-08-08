@@ -14,6 +14,7 @@ export const SHOP_ITEMS: ShopItem[] = [
   { id: 4, name: '狙击枪 M1', cost: 4750, weaponId: 4 },
   { id: 8, name: 'M4 粉色', cost: 3200, weaponId: 6 },
   { id: 9, name: '激光炮', cost: 6200, weaponId: 7 },
+  { id: 10, name: '加特林 G8', cost: 8000, weaponId: 8 },
   { id: 5, name: '烟雾弹', cost: 300 },
   { id: 6, name: '闪光弹', cost: 200 },
   { id: 7, name: '高爆手雷', cost: 300 },

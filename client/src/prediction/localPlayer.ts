@@ -422,6 +422,8 @@ function recoilForWeapon(weaponId: number, shotIndex: number): RecoilKick {
       return { pitch: 1.25 + n * 0.11, yaw: [0.22, -0.3, 0.34, -0.23, 0.28, -0.18][n] }
     case 7:
       return { pitch: 2.25, yaw: n % 2 === 0 ? 0.24 : -0.24 }
+    case 8:
+      return { pitch: [0.45, 0.5, 0.55, 0.6, 0.65, 0.7][n], yaw: [0.15, -0.18, 0.2, -0.15, 0.18, -0.12][n] }
     default:
       return { pitch: 0, yaw: 0 }
   }

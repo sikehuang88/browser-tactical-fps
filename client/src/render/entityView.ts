@@ -55,7 +55,7 @@ export class EntityView {
         .then((asset) => this.assets.set(id, asset))
         .catch((error) => console.warn(`[character] Failed to load ${id}`, error))
     }
-    for (const id of ['rifle', 'sniper', 'pistol', 'pinkM4', 'laserCannon'] as const) {
+    for (const id of ['rifle', 'sniper', 'pistol', 'pinkM4', 'laserCannon', 'gatling'] as const) {
       void createGameplayModel(id)
         .then((model) => this.weaponAssets.set(id, model))
         .catch((error) => console.warn(`[weapon] Failed to load ${id}`, error))
@@ -236,7 +236,7 @@ export class EntityView {
         ? object.material.map((material) => material.clone())
         : object.material.clone()
     })
-    weapon.scale.setScalar(modelId === 'sniper' ? 0.42 : 0.36)
+    weapon.scale.setScalar(modelId === 'sniper' ? 0.42 : modelId === 'gatling' ? 0.5 : 0.36)
     weapon.position.set(0.34, 1.08, -0.06)
     weapon.rotation.set(0.18, gameplayModelRotationY(modelId), 0.1)
     weapon.traverse((object) => {
